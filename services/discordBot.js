@@ -6,7 +6,11 @@ import { MessageHandler } from "../handlers/messageHandler.js";
 export class DiscordBot {
   constructor() {
     this.client = new Client({
-      intents: CONFIG.INTENTS.map((intent) => GatewayIntentBits[intent]),
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ],
     });
 
     this.messageHandler = new MessageHandler();
