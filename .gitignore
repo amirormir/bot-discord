@@ -1,0 +1,42 @@
+# Variables d'environnement (contient les tokens sensibles)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Dépendances Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs
+*.log
+
+# Fichiers temporaires
+.tmp/
+.temp/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# IDE/Editeur
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Fichiers de build
+dist/
+build/
+
+# Fichiers de cache
+.cache/
+.parcel-cache/
+
+# Fichiers de sauvegarde
+*.bak
+*.backup
