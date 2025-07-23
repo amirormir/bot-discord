@@ -24,6 +24,21 @@ const WATCHED_USERS = [
   "1223954854138085387",
 ];
 
+// Utilisateur pour les réponses aléatoires
+const RANDOM_RESPONSE_USER = "277825453580877824";
+
+// Messages de réponse aléatoires
+const RANDOM_RESPONSES = [
+  "bien dit goat",
+  "les termes",
+  "reel",
+  "OWN THIS FRAUD",
+  "MY midlaner",
+];
+
+// Compteur de messages pour l'utilisateur
+let messageCounter = 0;
+
 // GIF de remplacement
 const REPLACEMENT_GIF =
   "https://tenor.com/view/om-ome-flight-flightreacts-ome3-gif-11351943889690488996";
@@ -34,6 +49,31 @@ client.on("messageCreate", async (message) => {
   );
 
   if (message.author.bot) return;
+
+  // Gestion des réponses aléatoires pour l'utilisateur spécifique
+  if (message.author.id === RANDOM_RESPONSE_USER) {
+    messageCounter++;
+    console.log(
+      `📊 Compteur de messages pour ${message.author.tag}: ${messageCounter}`
+    );
+
+    // Répondre tous les 2 ou 3 messages (aléatoire)
+    if (messageCounter >= 2 && Math.random() < 0.5) {
+      const randomResponse =
+        RANDOM_RESPONSES[Math.floor(Math.random() * RANDOM_RESPONSES.length)];
+      console.log(`🎲 Envoi d'une réponse aléatoire: "${randomResponse}"`);
+
+      try {
+        await message.reply(randomResponse);
+        messageCounter = 0; // Reset du compteur après réponse
+      } catch (err) {
+        console.error(
+          "❌ Erreur lors de l'envoi de la réponse aléatoire:",
+          err.message
+        );
+      }
+    }
+  }
 
   // Vérifier si l'utilisateur est dans la liste surveillée
   if (!WATCHED_USERS.includes(message.author.id)) {
