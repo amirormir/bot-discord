@@ -2,16 +2,18 @@ import { DiscordBot } from "./services/discordBot.js";
 import { Logger } from "./utils/logger.js";
 import { connectDB } from "./utils/db.js";
 
+let bot; // Déclaré en haut pour être accessible partout
+
 // Gestion des signaux pour arrêt propre
 process.on("SIGINT", async () => {
   Logger.info("Arrêt du bot...");
-  await bot.stop();
+  if (bot) await bot.stop();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
   Logger.info("Arrêt du bot...");
-  await bot.stop();
+  if (bot) await bot.stop();
   process.exit(0);
 });
 
@@ -27,7 +29,7 @@ process.on("uncaughtException", (error) => {
 
 async function main() {
   await connectDB();
-  const bot = new DiscordBot();
+  bot = new DiscordBot();
   Logger.info("Démarrage du bot Discord...");
   bot.start().catch((error) => {
     Logger.error(`Erreur fatale: ${error.message}`);
