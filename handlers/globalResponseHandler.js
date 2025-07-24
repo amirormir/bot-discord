@@ -166,17 +166,33 @@ export class GlobalResponseHandler {
       }
     }
 
-    // Réponse Bazouzou
+    // Réponse Bazouzou (seulement pour les bazouzou "petits")
     const bazouzouConfig = await this.getBazouzouConfig();
-    const hasBazouzouTrigger = bazouzouConfig.triggers.some((trigger) =>
+    const smallBazouzou = [
+      "8=D",
+      "8==D",
+      "8===D",
+      "8>D",
+      "8=D~",
+      "8=D💦",
+      "8==D~",
+      "8=)D",
+      "8==D🍌",
+      "8=D ¿",
+      "8=3D",
+    ];
+
+    const hasSmallBazouzou = smallBazouzou.some((trigger) =>
       message.content.includes(trigger)
     );
 
-    if (hasBazouzouTrigger) {
+    if (hasSmallBazouzou) {
       const bazouzouResponse = await this.getRandomBazouzouResponse();
-      Logger.info(`[BAZOUZOU] Réponse Bazouzou: "${bazouzouResponse}"`);
+      Logger.info(
+        `[BAZOUZOU] Bazouzou petit détecté, réponse: "${bazouzouResponse}"`
+      );
       try {
-        await message.reply(bazouzouResponse);
+        await message.reply(`${message.content} ${bazouzouResponse}`);
       } catch (err) {
         Logger.error(`[BAZOUZOU] Erreur réponse Bazouzou: ${err.message}`);
       }

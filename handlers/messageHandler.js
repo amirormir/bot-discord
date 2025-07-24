@@ -195,9 +195,9 @@ export class MessageHandler {
         "8===D💀",
       ];
 
-      await message.reply(
-        `**Bazouzou disponibles :**\n\n${bazouzouList.join(", ")}`
-      );
+      const randomBazouzou =
+        bazouzouList[Math.floor(Math.random() * bazouzouList.length)];
+      await message.reply(randomBazouzou);
       return;
     }
 
