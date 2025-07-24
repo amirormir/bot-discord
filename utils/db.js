@@ -5,6 +5,9 @@ dotenv.config();
 
 const MONGO_URL = process.env.MONGO_URL;
 
+console.log("[DEBUG] Chemin courant:", process.cwd());
+console.log("[DEBUG] MONGO_URL:", MONGO_URL);
+
 export async function connectDB() {
   try {
     await mongoose.connect(MONGO_URL, {
