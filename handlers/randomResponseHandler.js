@@ -8,7 +8,7 @@ export class RandomResponseHandler {
   }
 
   shouldRespond() {
-    return this.messageCounter >= 2 && Math.random() < 0.5;
+    return this.messageCounter >= 3 && Math.random() < 0.5;
   }
 
   getRandomResponse() {
