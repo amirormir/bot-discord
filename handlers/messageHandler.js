@@ -150,8 +150,53 @@ export class MessageHandler {
           `!listtemplates : Lister tous les templates\n` +
           `!deletetemplate <nom> : Supprimer un template\n` +
           `!sendmessage : Envoyer un message via sélecteur\n` +
+          `!bazouzou : Afficher tous les bazouzou disponibles\n` +
           `!help : Afficher cette liste de commandes\n\n` +
           `⚠️ **Toutes les commandes nécessitent la permission Administrateur**`
+      );
+      return;
+    }
+
+    // Commande pour afficher les bazouzou
+    if (message.content === "!bazouzou") {
+      const bazouzouList = [
+        "8=D",
+        "8==D",
+        "8===D",
+        "8>D",
+        "8=D~",
+        "8=D💦",
+        "8====D",
+        "8=====D",
+        "8======D",
+        "8=====D~",
+        "8====D💦",
+        "8====D~",
+        "8========D",
+        "8=========D",
+        "8===========D",
+        "8============D💦",
+        "8=========D~~",
+        "8=========D🍑",
+        "8==D~",
+        "8=)D",
+        "8==D🍌",
+        "(8====D)",
+        "[8====D]",
+        "/8===D\\",
+        "8==D👉👌",
+        "8=D ¿",
+        "8=3D",
+        "8==D⛓️",
+        "8===D🐍",
+        "8===D🔥",
+        "8===D😳",
+        "8===D🚀",
+        "8===D💀",
+      ];
+
+      await message.reply(
+        `**Bazouzou disponibles :**\n\n${bazouzouList.join(", ")}`
       );
       return;
     }

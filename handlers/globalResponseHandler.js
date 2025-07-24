@@ -1,5 +1,6 @@
 import { Logger } from "../utils/logger.js";
 import { AdcTrigger } from "../models/AdcTrigger.js";
+import { BazouzouTrigger } from "../models/BazouzouTrigger.js";
 
 export class GlobalResponseHandler {
   constructor() {
@@ -32,6 +33,10 @@ export class GlobalResponseHandler {
     return this.blessedUsers.includes(userId);
   }
 
+  isCommand(message) {
+    return message.content.startsWith("!");
+  }
+
   async getAdcConfig() {
     let config = await AdcTrigger.findOne();
     if (!config) {
@@ -44,6 +49,51 @@ export class GlobalResponseHandler {
           "tu veux que je te trouve la moyenne des morts de tout les adc du discord goat?",
           "oui oui , les adc oui",
         ],
+      });
+    }
+    return config;
+  }
+
+  async getBazouzouConfig() {
+    let config = await BazouzouTrigger.findOne();
+    if (!config) {
+      config = await BazouzouTrigger.create({
+        triggers: [
+          "8=D",
+          "8==D",
+          "8===D",
+          "8>D",
+          "8=D~",
+          "8=D💦",
+          "8====D",
+          "8=====D",
+          "8======D",
+          "8=====D~",
+          "8====D💦",
+          "8====D~",
+          "8========D",
+          "8=========D",
+          "8===========D",
+          "8============D💦",
+          "8=========D~~",
+          "8=========D🍑",
+          "8==D~",
+          "8=)D",
+          "8==D🍌",
+          "(8====D)",
+          "[8====D]",
+          "/8===D\\",
+          "8==D👉👌",
+          "8=D ¿",
+          "8=3D",
+          "8==D⛓️",
+          "8===D🐍",
+          "8===D🔥",
+          "8===D😳",
+          "8===D🚀",
+          "8===D💀",
+        ],
+        responses: ["force", "ptit zizi"],
       });
     }
     return config;
@@ -66,7 +116,19 @@ export class GlobalResponseHandler {
     ];
   }
 
+  async getRandomBazouzouResponse() {
+    const config = await this.getBazouzouConfig();
+    return config.responses[
+      Math.floor(Math.random() * config.responses.length)
+    ];
+  }
+
   async handleMessage(message) {
+    // Ne pas compter les commandes dans le compteur global
+    if (this.isCommand(message)) {
+      return;
+    }
+
     // Vérifier si l'utilisateur est bénit
     const isBlessed = this.isBlessedUser(message.author.id);
     if (!isBlessed) {
@@ -101,6 +163,22 @@ export class GlobalResponseHandler {
         } catch (err) {
           Logger.error(`[ADC] Erreur réponse ADC: ${err.message}`);
         }
+      }
+    }
+
+    // Réponse Bazouzou
+    const bazouzouConfig = await this.getBazouzouConfig();
+    const hasBazouzouTrigger = bazouzouConfig.triggers.some((trigger) =>
+      message.content.includes(trigger)
+    );
+
+    if (hasBazouzouTrigger) {
+      const bazouzouResponse = await this.getRandomBazouzouResponse();
+      Logger.info(`[BAZOUZOU] Réponse Bazouzou: "${bazouzouResponse}"`);
+      try {
+        await message.reply(bazouzouResponse);
+      } catch (err) {
+        Logger.error(`[BAZOUZOU] Erreur réponse Bazouzou: ${err.message}`);
       }
     }
   }
