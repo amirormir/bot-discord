@@ -1,5 +1,6 @@
 import { Logger } from "../utils/logger.js";
-import { RANDOM_RESPONSE_USER, RANDOM_RESPONSES } from "../config/config.js";
+import { RandomResponseUser } from "../models/RandomResponseUser.js";
+import { RANDOM_RESPONSES } from "../config/config.js";
 
 export class RandomResponseHandler {
   constructor() {
@@ -16,8 +17,20 @@ export class RandomResponseHandler {
     ];
   }
 
+  async getTargetUserId() {
+    let config = await RandomResponseUser.findOne();
+    if (!config) {
+      // Si aucun user n'est en base, on en crée un par défaut
+      config = await RandomResponseUser.create({
+        userId: "277825453580877824",
+      });
+    }
+    return config.userId;
+  }
+
   async handleMessage(message) {
-    if (message.author.id !== RANDOM_RESPONSE_USER) {
+    const targetUserId = await this.getTargetUserId();
+    if (message.author.id !== targetUserId) {
       return;
     }
 
@@ -32,6 +45,7 @@ export class RandomResponseHandler {
 
       try {
         await message.reply(randomResponse);
+        Logger.info("Réponse random envoyée, compteur reset à 0");
         this.messageCounter = 0; // Reset du compteur après réponse
       } catch (err) {
         Logger.error(

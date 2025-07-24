@@ -2,25 +2,61 @@ import { Logger } from "../utils/logger.js";
 import { RandomResponseHandler } from "./randomResponseHandler.js";
 import { ImageModerationHandler } from "./imageModerationHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
+import { RandomResponseUser } from "../models/RandomResponseUser.js";
+
+function parseDiscordId(input) {
+  // Enlève <@, <@!, >, espaces, etc. pour ne garder que l'ID pur
+  return input.replace(/<@!?([0-9]+)>/, "$1").trim();
+}
 
 async function addWatchedUser(userId) {
+  const cleanId = parseDiscordId(userId);
+  Logger.info(
+    `[DEBUG] Ajout demandé pour userId: '${userId}' (nettoyé: '${cleanId}')`
+  );
   try {
-    const existing = await WatchedUser.findOne({ userId });
+    const existing = await WatchedUser.findOne({ userId: cleanId });
+    Logger.info(
+      `[DEBUG] Recherche d'existence en base pour userId: '${cleanId}' => ${
+        existing ? "TROUVÉ" : "NON TROUVÉ"
+      }`
+    );
     if (existing) return false;
-    await WatchedUser.create({ userId });
+    await WatchedUser.create({ userId: cleanId });
+    Logger.info(`[DEBUG] Ajouté en base: '${cleanId}'`);
     return true;
   } catch (e) {
+    Logger.error(`[DEBUG] Erreur lors de l'ajout: ${e.message}`);
     return false;
   }
 }
 
 async function removeWatchedUser(userId) {
+  const cleanId = parseDiscordId(userId);
   try {
-    const res = await WatchedUser.deleteOne({ userId });
+    const res = await WatchedUser.deleteOne({ userId: cleanId });
+    Logger.info(
+      `[DEBUG] Suppression en base pour userId: '${cleanId}' => deletedCount: ${res.deletedCount}`
+    );
     return res.deletedCount > 0;
   } catch (e) {
+    Logger.error(`[DEBUG] Erreur lors de la suppression: ${e.message}`);
     return false;
   }
+}
+
+async function setRandomResponseUser(userId) {
+  let config = await RandomResponseUser.findOne();
+  if (config) {
+    config.userId = userId;
+    await config.save();
+  } else {
+    await RandomResponseUser.create({ userId });
+  }
+}
+
+async function removeRandomResponseUser() {
+  await RandomResponseUser.deleteMany({});
 }
 
 export class MessageHandler {
@@ -74,10 +110,44 @@ export class MessageHandler {
       return;
     }
 
-    // Gestion des réponses aléatoires
-    await this.randomResponseHandler.handleMessage(message);
+    // Commandes pour gérer l'utilisateur random response
+    if (message.content.startsWith("!setrandomuser ")) {
+      const userId = message.content.split(" ")[1];
+      if (!userId) {
+        await message.reply("Usage : !setrandomuser <userId>");
+        return;
+      }
+      await setRandomResponseUser(userId);
+      await message.reply(
+        `Utilisateur cible des réponses random défini : ${userId}`
+      );
+      return;
+    }
+    if (message.content.startsWith("!removerandomuser")) {
+      await removeRandomResponseUser();
+      await message.reply(
+        "Aucun utilisateur n'a désormais accès aux réponses random."
+      );
+      return;
+    }
+
+    // Commande pour lister toutes les commandes
+    if (message.content === "!help") {
+      await message.reply(
+        `**Commandes disponibles :**\n\n` +
+          `!addwatch <userId> : Ajouter un utilisateur surveillé\n` +
+          `!removewatch <userId> : Retirer un utilisateur surveillé\n` +
+          `!setrandomuser <userId> : Définir l'utilisateur cible des réponses random\n` +
+          `!removerandomuser : Désactiver les réponses random\n` +
+          `!help : Afficher cette liste de commandes`
+      );
+      return;
+    }
 
     // Gestion de la modération des images
     await this.imageModerationHandler.handleMessage(message);
+
+    // Gestion des réponses aléatoires
+    await this.randomResponseHandler.handleMessage(message);
   }
 }
