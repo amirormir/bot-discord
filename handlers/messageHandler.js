@@ -70,7 +70,51 @@ export class MessageHandler {
       return;
     }
 
-    // Vérification des permissions pour toutes les commandes
+    // Commande pour afficher les bazouzou (accessible à tous)
+    if (message.content === "!bazouzou") {
+      const bazouzouList = [
+        "8=D",
+        "8==D",
+        "8===D",
+        "8>D",
+        "8=D~",
+        "8=D💦",
+        "8====D",
+        "8=====D",
+        "8======D",
+        "8=====D~",
+        "8====D💦",
+        "8====D~",
+        "8========D",
+        "8=========D",
+        "8===========D",
+        "8============D💦",
+        "8=========D~~",
+        "8=========D🍑",
+        "8==D~",
+        "8=)D",
+        "8==D🍌",
+        "(8====D)",
+        "[8====D]",
+        "/8===D\\",
+        "8==D👉👌",
+        "8=D ¿",
+        "8=3D",
+        "8==D⛓️",
+        "8===D🐍",
+        "8===D🔥",
+        "8===D😳",
+        "8===D🚀",
+        "8===D💀",
+      ];
+
+      const randomBazouzou =
+        bazouzouList[Math.floor(Math.random() * bazouzouList.length)];
+      await message.reply(randomBazouzou);
+      return;
+    }
+
+    // Vérification des permissions pour toutes les autres commandes
     if (
       message.content.startsWith("!") &&
       !hasAdminPermission(message.member)
@@ -142,6 +186,10 @@ export class MessageHandler {
     if (message.content === "!help") {
       await message.reply(
         `**Commandes disponibles :**\n\n` +
+          `**Commandes publiques :**\n` +
+          `!bazouzou : Afficher un bazouzou aléatoire\n` +
+          `!help : Afficher cette liste de commandes\n\n` +
+          `**Commandes administrateur :**\n` +
           `!addwatch <userId> : Ajouter un utilisateur surveillé\n` +
           `!removewatch <userId> : Retirer un utilisateur surveillé\n` +
           `!setrandomuser <userId> : Définir l'utilisateur cible des réponses random\n` +
@@ -149,55 +197,9 @@ export class MessageHandler {
           `!createtemplate <nom> <contenu> : Créer un template de message\n` +
           `!listtemplates : Lister tous les templates\n` +
           `!deletetemplate <nom> : Supprimer un template\n` +
-          `!sendmessage : Envoyer un message via sélecteur\n` +
-          `!bazouzou : Afficher tous les bazouzou disponibles\n` +
-          `!help : Afficher cette liste de commandes\n\n` +
-          `⚠️ **Toutes les commandes nécessitent la permission Administrateur**`
+          `!sendmessage : Envoyer un message via sélecteur\n\n` +
+          `⚠️ **Les commandes administrateur nécessitent la permission Administrateur**`
       );
-      return;
-    }
-
-    // Commande pour afficher les bazouzou
-    if (message.content === "!bazouzou") {
-      const bazouzouList = [
-        "8=D",
-        "8==D",
-        "8===D",
-        "8>D",
-        "8=D~",
-        "8=D💦",
-        "8====D",
-        "8=====D",
-        "8======D",
-        "8=====D~",
-        "8====D💦",
-        "8====D~",
-        "8========D",
-        "8=========D",
-        "8===========D",
-        "8============D💦",
-        "8=========D~~",
-        "8=========D🍑",
-        "8==D~",
-        "8=)D",
-        "8==D🍌",
-        "(8====D)",
-        "[8====D]",
-        "/8===D\\",
-        "8==D👉👌",
-        "8=D ¿",
-        "8=3D",
-        "8==D⛓️",
-        "8===D🐍",
-        "8===D🔥",
-        "8===D😳",
-        "8===D🚀",
-        "8===D💀",
-      ];
-
-      const randomBazouzou =
-        bazouzouList[Math.floor(Math.random() * bazouzouList.length)];
-      await message.reply(randomBazouzou);
       return;
     }
 
