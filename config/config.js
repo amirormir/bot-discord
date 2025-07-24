@@ -7,12 +7,6 @@ export const CONFIG = {
   INTENTS: ["Guilds", "GuildMessages", "MessageContent"],
 };
 
-export const WATCHED_USERS = [
-  "320579673828360194",
-  "374853015296933890",
-  "1223954854138085387",
-];
-
 export const RANDOM_RESPONSE_USER = "277825453580877824";
 
 export const RANDOM_RESPONSES = [
