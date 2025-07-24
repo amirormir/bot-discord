@@ -1,5 +1,4 @@
 import { Logger } from "../utils/logger.js";
-import { BlessedUser } from "../models/BlessedUser.js";
 import { AdcTrigger } from "../models/AdcTrigger.js";
 
 export class GlobalResponseHandler {
@@ -12,11 +11,25 @@ export class GlobalResponseHandler {
       "qui lui dit ?",
       "@https://tenor.com/fr/view/benzema-karim-benzema-arrete-arrête-arrete-arrete-arrete-gif-5404649638740761265",
     ];
+    // Utilisateurs bénis définis directement dans le code
+    this.blessedUsers = [
+      "277825453580877824",
+      "700466241265205368",
+      "451379187031343104",
+      "276060004262477825",
+      "432610292342587392",
+      "472911936951156740",
+      "684773505157431347",
+      "589065324834324500",
+      "338222603829510164",
+      "550737379460382752",
+      "204255221017214977",
+      "1397555801542889564",
+    ];
   }
 
-  async isBlessedUser(userId) {
-    const user = await BlessedUser.findOne({ userId });
-    return !!user;
+  isBlessedUser(userId) {
+    return this.blessedUsers.includes(userId);
   }
 
   async getAdcConfig() {
@@ -55,7 +68,7 @@ export class GlobalResponseHandler {
 
   async handleMessage(message) {
     // Vérifier si l'utilisateur est bénit
-    const isBlessed = await this.isBlessedUser(message.author.id);
+    const isBlessed = this.isBlessedUser(message.author.id);
     if (!isBlessed) {
       this.messageCounter++;
       Logger.info(`[GLOBAL] Compteur global: ${this.messageCounter}`);
