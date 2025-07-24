@@ -1,36 +1,25 @@
 import { Logger } from "../utils/logger.js";
 import { RandomResponseHandler } from "./randomResponseHandler.js";
 import { ImageModerationHandler } from "./imageModerationHandler.js";
-import { promises as fs } from "fs";
-
-const WATCHED_USERS_PATH = "./config/watchedUsers.json";
+import { WatchedUser } from "../models/WatchedUser.js";
 
 async function addWatchedUser(userId) {
-  const users = await getWatchedUsers();
-  if (!users.includes(userId)) {
-    users.push(userId);
-    await fs.writeFile(WATCHED_USERS_PATH, JSON.stringify(users, null, 2));
+  try {
+    const existing = await WatchedUser.findOne({ userId });
+    if (existing) return false;
+    await WatchedUser.create({ userId });
     return true;
+  } catch (e) {
+    return false;
   }
-  return false;
 }
 
 async function removeWatchedUser(userId) {
-  let users = await getWatchedUsers();
-  if (users.includes(userId)) {
-    users = users.filter((id) => id !== userId);
-    await fs.writeFile(WATCHED_USERS_PATH, JSON.stringify(users, null, 2));
-    return true;
-  }
-  return false;
-}
-
-async function getWatchedUsers() {
   try {
-    const data = await fs.readFile(WATCHED_USERS_PATH, "utf-8");
-    return JSON.parse(data);
+    const res = await WatchedUser.deleteOne({ userId });
+    return res.deletedCount > 0;
   } catch (e) {
-    return [];
+    return false;
   }
 }
 
@@ -60,7 +49,9 @@ export class MessageHandler {
       if (added) {
         await message.reply(`Utilisateur surveillé ajouté : ${userId}`);
       } else {
-        await message.reply(`L'utilisateur ${userId} est déjà surveillé.`);
+        await message.reply(
+          `L'utilisateur ${userId} est déjà surveillé ou une erreur est survenue.`
+        );
       }
       return;
     }
@@ -76,7 +67,9 @@ export class MessageHandler {
           `Utilisateur retiré de la surveillance : ${userId}`
         );
       } else {
-        await message.reply(`L'utilisateur ${userId} n'était pas surveillé.`);
+        await message.reply(
+          `L'utilisateur ${userId} n'était pas surveillé ou une erreur est survenue.`
+        );
       }
       return;
     }

@@ -1,23 +1,16 @@
 import { Logger } from "../utils/logger.js";
 import { ImageDetector } from "../utils/imageDetector.js";
-import { promises as fs } from "fs";
 import { REPLACEMENT_GIF, MESSAGE_DELETE_DELAY } from "../config/config.js";
+import { WatchedUser } from "../models/WatchedUser.js";
 
-const WATCHED_USERS_PATH = "./config/watchedUsers.json";
-
-async function getWatchedUsers() {
-  try {
-    const data = await fs.readFile(WATCHED_USERS_PATH, "utf-8");
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
+async function isWatchedUser(userId) {
+  return !!(await WatchedUser.findOne({ userId }));
 }
 
 export class ImageModerationHandler {
   async handleMessage(message) {
-    const WATCHED_USERS = await getWatchedUsers();
-    if (!WATCHED_USERS.includes(message.author.id)) {
+    const watched = await isWatchedUser(message.author.id);
+    if (!watched) {
       return;
     }
 

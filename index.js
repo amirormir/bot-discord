@@ -1,5 +1,6 @@
 import { DiscordBot } from "./services/discordBot.js";
 import { Logger } from "./utils/logger.js";
+import { connectDB } from "./utils/db.js";
 
 // Gestion des signaux pour arrêt propre
 process.on("SIGINT", async () => {
@@ -24,11 +25,14 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-// Démarrage du bot
-const bot = new DiscordBot();
+async function main() {
+  await connectDB();
+  const bot = new DiscordBot();
+  Logger.info("Démarrage du bot Discord...");
+  bot.start().catch((error) => {
+    Logger.error(`Erreur fatale: ${error.message}`);
+    process.exit(1);
+  });
+}
 
-Logger.info("Démarrage du bot Discord...");
-bot.start().catch((error) => {
-  Logger.error(`Erreur fatale: ${error.message}`);
-  process.exit(1);
-});
+main();
