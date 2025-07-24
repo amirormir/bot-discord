@@ -9,41 +9,27 @@ function parseDiscordId(input) {
 
 async function isWatchedUser(userId) {
   const cleanId = parseDiscordId(userId);
-  Logger.info(
-    `[DEBUG] Recherche en base pour userId: '${userId}' (nettoyé: '${cleanId}')`
-  );
   const user = await WatchedUser.findOne({ userId: cleanId });
-  Logger.info(`[DEBUG] Résultat de la recherche:`, user);
   Logger.info(
-    `[MODERATION] Vérification watched user pour ${cleanId} : ${
-      user ? "OUI" : "NON"
-    }`
+    `[MODERATION] Utilisateur ${cleanId} surveillé: ${user ? "OUI" : "NON"}`
   );
   return !!user;
 }
 
 export class ImageModerationHandler {
   async handleMessage(message) {
-    Logger.info(
-      `[MODERATION] Analyse du message de ${message.author.tag} (${message.author.id})`
-    );
     const watched = await isWatchedUser(message.author.id);
     if (!watched) {
-      Logger.info(`[MODERATION] Utilisateur NON surveillé, aucune action.`);
       return;
     }
 
     Logger.user(`Utilisateur surveillé détecté : ${message.author.tag}`);
 
     const hasImage = ImageDetector.detectImage(message);
-    Logger.info(
-      `[MODERATION] Présence d'image/GIF dans le message : ${
-        hasImage ? "OUI" : "NON"
-      }`
-    );
+    Logger.info(`[MODERATION] Image/GIF détectée: ${hasImage ? "OUI" : "NON"}`);
 
     if (hasImage) {
-      Logger.info(`[MODERATION] Tentative de suppression du message...`);
+      Logger.info(`[MODERATION] Suppression du message...`);
       await this.handleImageMessage(message);
     } else {
       Logger.success("Aucune image/GIF détectée, message conservé");

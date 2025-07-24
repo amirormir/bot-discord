@@ -11,19 +11,11 @@ function parseDiscordId(input) {
 
 async function addWatchedUser(userId) {
   const cleanId = parseDiscordId(userId);
-  Logger.info(
-    `[DEBUG] Ajout demandé pour userId: '${userId}' (nettoyé: '${cleanId}')`
-  );
   try {
     const existing = await WatchedUser.findOne({ userId: cleanId });
-    Logger.info(
-      `[DEBUG] Recherche d'existence en base pour userId: '${cleanId}' => ${
-        existing ? "TROUVÉ" : "NON TROUVÉ"
-      }`
-    );
     if (existing) return false;
     await WatchedUser.create({ userId: cleanId });
-    Logger.info(`[DEBUG] Ajouté en base: '${cleanId}'`);
+    Logger.info(`[DEBUG] Utilisateur surveillé ajouté: '${cleanId}'`);
     return true;
   } catch (e) {
     Logger.error(`[DEBUG] Erreur lors de l'ajout: ${e.message}`);
@@ -35,9 +27,7 @@ async function removeWatchedUser(userId) {
   const cleanId = parseDiscordId(userId);
   try {
     const res = await WatchedUser.deleteOne({ userId: cleanId });
-    Logger.info(
-      `[DEBUG] Suppression en base pour userId: '${cleanId}' => deletedCount: ${res.deletedCount}`
-    );
+    Logger.info(`[DEBUG] Utilisateur surveillé supprimé: '${cleanId}'`);
     return res.deletedCount > 0;
   } catch (e) {
     Logger.error(`[DEBUG] Erreur lors de la suppression: ${e.message}`);
@@ -59,6 +49,10 @@ async function removeRandomResponseUser() {
   await RandomResponseUser.deleteMany({});
 }
 
+function hasAdminPermission(member) {
+  return member.permissions.has("Administrator");
+}
+
 export class MessageHandler {
   constructor() {
     this.randomResponseHandler = new RandomResponseHandler();
@@ -71,6 +65,17 @@ export class MessageHandler {
     );
 
     if (message.author.bot) {
+      return;
+    }
+
+    // Vérification des permissions pour toutes les commandes
+    if (
+      message.content.startsWith("!") &&
+      !hasAdminPermission(message.member)
+    ) {
+      await message.reply(
+        "❌ Vous devez avoir la permission **Administrateur** pour utiliser les commandes du bot."
+      );
       return;
     }
 
@@ -139,7 +144,8 @@ export class MessageHandler {
           `!removewatch <userId> : Retirer un utilisateur surveillé\n` +
           `!setrandomuser <userId> : Définir l'utilisateur cible des réponses random\n` +
           `!removerandomuser : Désactiver les réponses random\n` +
-          `!help : Afficher cette liste de commandes`
+          `!help : Afficher cette liste de commandes\n\n` +
+          `⚠️ **Toutes les commandes nécessitent la permission Administrateur**`
       );
       return;
     }
