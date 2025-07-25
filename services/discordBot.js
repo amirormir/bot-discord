@@ -39,111 +39,130 @@ export class DiscordBot {
   }
 
   async onInteractionCreate(interaction) {
-    if (!interaction.isStringSelectMenu()) return;
-
-    if (interaction.customId === "channel_selector") {
-      try {
-        const templateName = interaction.values[0];
-        const template = await this.messageTemplateHandler.getTemplate(
-          templateName
-        );
-
-        if (!template) {
-          await interaction.reply({
-            content: "❌ Template non trouvé.",
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // Créer le sélecteur de channel
-        const channels = interaction.guild.channels.cache
-          .filter((channel) => channel.type === 0) // 0 = GUILD_TEXT
-          .map((channel) => ({
-            label: channel.name,
-            value: channel.id,
-            description: `#${channel.name}`,
-          }));
-
-        const {
-          ActionRowBuilder,
-          StringSelectMenuBuilder,
-          StringSelectMenuOptionBuilder,
-        } = await import("discord.js");
-
-        const channelSelect = new StringSelectMenuBuilder()
-          .setCustomId("final_channel_selector")
-          .setPlaceholder("Choisissez le channel de destination")
-          .addOptions(
-            channels
-              .slice(0, 25)
-              .map((channel) =>
-                new StringSelectMenuOptionBuilder()
-                  .setLabel(channel.label)
-                  .setDescription(channel.description)
-                  .setValue(channel.value)
-              )
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "channel_selector") {
+        try {
+          const templateName = interaction.values[0];
+          const template = await this.messageTemplateHandler.getTemplate(
+            templateName
           );
 
-        const row = new ActionRowBuilder().addComponents(channelSelect);
+          if (!template) {
+            await interaction.reply({
+              content: "❌ Template non trouvé.",
+              ephemeral: true,
+            });
+            return;
+          }
 
-        await interaction.update({
-          content: `Template sélectionné : **${template.name}**\nChoisissez maintenant le channel :`,
-          components: [row],
-        });
-      } catch (error) {
-        Logger.error(`Erreur sélection template: ${error.message}`);
-        await interaction.reply({
-          content: "❌ Erreur lors de la sélection.",
-          ephemeral: true,
-        });
+          // Créer le sélecteur de channel
+          const channels = interaction.guild.channels.cache
+            .filter((channel) => channel.type === 0) // 0 = GUILD_TEXT
+            .map((channel) => ({
+              label: channel.name,
+              value: channel.id,
+              description: `#${channel.name}`,
+            }));
+
+          const {
+            ActionRowBuilder,
+            StringSelectMenuBuilder,
+            StringSelectMenuOptionBuilder,
+          } = await import("discord.js");
+
+          const channelSelect = new StringSelectMenuBuilder()
+            .setCustomId("final_channel_selector")
+            .setPlaceholder("Choisissez le channel de destination")
+            .addOptions(
+              channels
+                .slice(0, 25)
+                .map((channel) =>
+                  new StringSelectMenuOptionBuilder()
+                    .setLabel(channel.label)
+                    .setDescription(channel.description)
+                    .setValue(channel.value)
+                )
+            );
+
+          const row = new ActionRowBuilder().addComponents(channelSelect);
+
+          await interaction.update({
+            content: `Template sélectionné : **${template.name}**\nChoisissez maintenant le channel :`,
+            components: [row],
+          });
+        } catch (error) {
+          Logger.error(`Erreur sélection template: ${error.message}`);
+          await interaction.reply({
+            content: "❌ Erreur lors de la sélection.",
+            ephemeral: true,
+          });
+        }
+      }
+
+      if (interaction.customId === "final_channel_selector") {
+        try {
+          const channelId = interaction.values[0];
+          const channel = interaction.guild.channels.cache.get(channelId);
+
+          if (!channel) {
+            await interaction.reply({
+              content: "❌ Channel non trouvé.",
+              ephemeral: true,
+            });
+            return;
+          }
+
+          // Récupérer le template depuis le message précédent
+          const templateName = interaction.message.content.match(
+            /Template sélectionné : \*\*(.*?)\*\*/
+          )?.[1];
+          const template = await this.messageTemplateHandler.getTemplate(
+            templateName
+          );
+
+          if (!template) {
+            await interaction.reply({
+              content: "❌ Template non trouvé.",
+              ephemeral: true,
+            });
+            return;
+          }
+
+          // Envoyer le message avec @everyone
+          await channel.send({
+            content: `@everyone ${template.content}`,
+          });
+
+          await interaction.update({
+            content: `✅ Message envoyé dans #${channel.name} !`,
+            components: [],
+          });
+        } catch (error) {
+          Logger.error(`Erreur envoi message: ${error.message}`);
+          await interaction.reply({
+            content: "❌ Erreur lors de l'envoi.",
+            ephemeral: true,
+          });
+        }
+      }
+
+      // Interactions Custom 5v5
+      if (interaction.customId === "role_selection") {
+        await this.messageHandler.customGameHandler.handleRoleSelection(
+          interaction
+        );
+      }
+
+      if (interaction.customId === "cost_selection") {
+        await this.messageHandler.customGameHandler.handleCostSelection(
+          interaction
+        );
       }
     }
 
-    if (interaction.customId === "final_channel_selector") {
-      try {
-        const channelId = interaction.values[0];
-        const channel = interaction.guild.channels.cache.get(channelId);
-
-        if (!channel) {
-          await interaction.reply({
-            content: "❌ Channel non trouvé.",
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // Récupérer le template depuis le message précédent
-        const templateName = interaction.message.content.match(
-          /Template sélectionné : \*\*(.*?)\*\*/
-        )?.[1];
-        const template = await this.messageTemplateHandler.getTemplate(
-          templateName
-        );
-
-        if (!template) {
-          await interaction.reply({
-            content: "❌ Template non trouvé.",
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // Envoyer le message avec @everyone
-        await channel.send({
-          content: `@everyone ${template.content}`,
-        });
-
-        await interaction.update({
-          content: `✅ Message envoyé dans #${channel.name} !`,
-          components: [],
-        });
-      } catch (error) {
-        Logger.error(`Erreur envoi message: ${error.message}`);
-        await interaction.reply({
-          content: "❌ Erreur lors de l'envoi.",
-          ephemeral: true,
-        });
+    if (interaction.isButton()) {
+      if (interaction.customId === "join_queue") {
+        await this.messageHandler.customGameHandler.joinQueue(interaction);
       }
     }
   }
