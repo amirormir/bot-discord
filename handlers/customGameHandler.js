@@ -110,6 +110,55 @@ export class CustomGameHandler {
 
   async showRoleAndCostSelection(interaction, player) {
     try {
+      const queue = await Queue.findById(player.queueId);
+      const players = await Player.find({
+        queueId: player.queueId,
+        selectedRole: { $ne: null },
+      });
+
+      // Vérifier les locks de rôles
+      const roleCounts = {
+        Top: 0,
+        Jungle: 0,
+        Mid: 0,
+        ADC: 0,
+        Support: 0,
+        Fill: 0,
+      };
+
+      players.forEach((p) => {
+        if (p.selectedRole && roleCounts[p.selectedRole] !== undefined) {
+          roleCounts[p.selectedRole]++;
+        }
+      });
+
+      Logger.info(
+        `[CUSTOM_GAME] Compteurs de rôles: ${JSON.stringify(roleCounts)}`
+      );
+
+      // Rôles disponibles (max 2 par rôle)
+      const availableRoles = [];
+      const roleOptions = [
+        { label: "Top", value: "Top", description: "Top Lane" },
+        { label: "Jungle", value: "Jungle", description: "Jungle" },
+        { label: "Mid", value: "Mid", description: "Mid Lane" },
+        { label: "ADC", value: "ADC", description: "ADC" },
+        { label: "Support", value: "Support", description: "Support" },
+        { label: "Fill", value: "Fill", description: "Rôle flexible" },
+      ];
+
+      roleOptions.forEach((role) => {
+        if (roleCounts[role.value] < 2) {
+          availableRoles.push(role);
+        } else {
+          Logger.info(
+            `[CUSTOM_GAME] Rôle ${role.value} locké (${
+              roleCounts[role.value]
+            }/2)`
+          );
+        }
+      });
+
       const embed = new EmbedBuilder()
         .setTitle("🎭 Sélection Rôle et Niveau")
         .setDescription(
@@ -130,18 +179,25 @@ export class CustomGameHandler {
         .setColor("#ffaa00")
         .setTimestamp();
 
-      // Créer le sélecteur de rôle
+      // Ajouter les rôles lockés dans l'embed
+      const lockedRoles = roleOptions.filter(
+        (role) => roleCounts[role.value] >= 2
+      );
+      if (lockedRoles.length > 0) {
+        embed.addFields({
+          name: "🔒 Rôles lockés",
+          value: lockedRoles
+            .map((role) => `${role.label} (${roleCounts[role.value]}/2)`)
+            .join(", "),
+          inline: false,
+        });
+      }
+
+      // Créer le sélecteur de rôle avec seulement les rôles disponibles
       const roleSelect = new StringSelectMenuBuilder()
         .setCustomId(`role_selection_${player._id}`)
         .setPlaceholder("Choisissez votre rôle")
-        .addOptions([
-          { label: "Top", value: "Top", description: "Top Lane" },
-          { label: "Jungle", value: "Jungle", description: "Jungle" },
-          { label: "Mid", value: "Mid", description: "Mid Lane" },
-          { label: "ADC", value: "ADC", description: "ADC" },
-          { label: "Support", value: "Support", description: "Support" },
-          { label: "Fill", value: "Fill", description: "Rôle flexible" },
-        ]);
+        .addOptions(availableRoles);
 
       // Créer le sélecteur de cost
       const costSelect = new StringSelectMenuBuilder()
@@ -183,6 +239,42 @@ export class CustomGameHandler {
           content: "❌ Joueur non trouvé.",
           ephemeral: true,
         });
+        return;
+      }
+
+      // Vérifier si le rôle est toujours disponible
+      const players = await Player.find({
+        queueId: player.queueId,
+        selectedRole: { $ne: null },
+      });
+
+      const roleCounts = {
+        Top: 0,
+        Jungle: 0,
+        Mid: 0,
+        ADC: 0,
+        Support: 0,
+        Fill: 0,
+      };
+
+      players.forEach((p) => {
+        if (p.selectedRole && roleCounts[p.selectedRole] !== undefined) {
+          roleCounts[p.selectedRole]++;
+        }
+      });
+
+      // Vérifier si le rôle est locké
+      if (roleCounts[selectedRole] >= 2) {
+        Logger.info(
+          `[CUSTOM_GAME] Rôle ${selectedRole} locké par ${interaction.user.tag}`
+        );
+        await interaction.reply({
+          content: `❌ Le rôle **${selectedRole}** est maintenant locké (${roleCounts[selectedRole]}/2). Veuillez choisir un autre rôle.`,
+          ephemeral: true,
+        });
+
+        // Afficher à nouveau le menu de sélection avec les rôles disponibles
+        await this.showRoleAndCostSelection(interaction, player);
         return;
       }
 
@@ -496,6 +588,26 @@ export class CustomGameHandler {
         (p) => !p.selectedRole || !p.selectedCost
       );
 
+      // Calculer les compteurs de rôles
+      const roleCounts = {
+        Top: 0,
+        Jungle: 0,
+        Mid: 0,
+        ADC: 0,
+        Support: 0,
+        Fill: 0,
+      };
+
+      completePlayers.forEach((p) => {
+        if (p.selectedRole && roleCounts[p.selectedRole] !== undefined) {
+          roleCounts[p.selectedRole]++;
+        }
+      });
+
+      const lockedRoles = Object.entries(roleCounts)
+        .filter(([role, count]) => count >= 2)
+        .map(([role, count]) => `${role} (${count}/2)`);
+
       // Logs détaillés
       Logger.info(`[CUSTOM_GAME] Nombre total de joueurs: ${players.length}`);
       Logger.info(`[CUSTOM_GAME] Joueurs complets: ${completePlayers.length}`);
@@ -503,10 +615,9 @@ export class CustomGameHandler {
         `[CUSTOM_GAME] Joueurs incomplets: ${incompletePlayers.length}`
       );
       Logger.info(
-        `[CUSTOM_GAME] IDs des joueurs complets: ${completePlayers
-          .map((p) => p.userId)
-          .join(", ")}`
+        `[CUSTOM_GAME] Compteurs de rôles: ${JSON.stringify(roleCounts)}`
       );
+      Logger.info(`[CUSTOM_GAME] Rôles lockés: ${lockedRoles.join(", ")}`);
 
       const embed = new EmbedBuilder()
         .setTitle("🎮 Queue 5v5 Custom")
@@ -533,6 +644,15 @@ export class CustomGameHandler {
         )
         .setColor("#00ff00")
         .setTimestamp();
+
+      // Ajouter les rôles lockés
+      if (lockedRoles.length > 0) {
+        embed.addFields({
+          name: "🔒 Rôles lockés",
+          value: lockedRoles.join(", "),
+          inline: false,
+        });
+      }
 
       // Ajouter la liste des joueurs complets avec leurs infos
       if (completePlayers.length > 0) {
