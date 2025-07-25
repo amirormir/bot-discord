@@ -49,12 +49,12 @@ export class DiscordBot {
             interaction
           );
         }
-        if (interaction.customId === "role_selection") {
+        if (interaction.customId.startsWith("role_selection_")) {
           await this.messageHandler.customGameHandler.handleRoleSelection(
             interaction
           );
         }
-        if (interaction.customId === "cost_selection") {
+        if (interaction.customId.startsWith("cost_selection_")) {
           await this.messageHandler.customGameHandler.handleCostSelection(
             interaction
           );

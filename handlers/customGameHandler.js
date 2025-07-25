@@ -84,34 +84,21 @@ export class CustomGameHandler {
         return;
       }
 
-      // Ajouter le joueur à la queue (sans selectedRole et selectedCost pour l'instant)
+      // Créer le joueur avec des valeurs temporaires
       const newPlayer = await Player.create({
         userId: interaction.user.id,
         username: interaction.user.username,
         queueId: queue._id,
+        selectedRole: null,
+        selectedCost: null,
       });
 
       Logger.info(
-        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) ajouté à la queue avec ID: ${newPlayer._id}`
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) créé avec ID: ${newPlayer._id}`
       );
 
-      await interaction.reply({
-        content: "✅ Vous avez rejoint la queue !",
-        ephemeral: true,
-      });
-
-      // Vérifier si la queue est pleine
-      const newPlayerCount = await Player.countDocuments({
-        queueId: queue._id,
-      });
-
-      Logger.info(`[CUSTOM_GAME] Nouveau nombre de joueurs: ${newPlayerCount}`);
-
-      if (newPlayerCount === 10) {
-        await this.startRoleSelection(interaction.channel, queue);
-      } else {
-        await this.updateQueueEmbed(interaction.channel, queue);
-      }
+      // Afficher le menu de sélection de rôle et cost
+      await this.showRoleAndCostSelection(interaction, newPlayer);
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur join queue: ${error.message}`);
       await interaction.reply({
@@ -121,29 +108,31 @@ export class CustomGameHandler {
     }
   }
 
-  async startRoleSelection(channel, queue) {
+  async showRoleAndCostSelection(interaction, player) {
     try {
-      // Mettre à jour la phase
-      queue.currentPhase = "role_selection";
-      await queue.save();
-
-      const players = await Player.find({ queueId: queue._id });
-
-      // Créer l'embed de sélection de rôle
       const embed = new EmbedBuilder()
-        .setTitle("🎭 Sélection des Rôles")
-        .setDescription("Chaque joueur doit choisir son rôle préféré.")
+        .setTitle("🎭 Sélection Rôle et Niveau")
+        .setDescription(
+          `Bienvenue ${interaction.user.username} ! Choisissez votre rôle et votre niveau.`
+        )
         .addFields(
-          { name: "Joueurs", value: `${players.length}/10`, inline: true },
-          { name: "Phase", value: "Sélection des rôles", inline: true },
-          { name: "Temps", value: "60 secondes", inline: true }
+          {
+            name: "Rôle",
+            value: "Choisissez votre rôle préféré",
+            inline: true,
+          },
+          {
+            name: "Niveau (1-5)",
+            value: "1 = Débutant, 5 = Expert",
+            inline: true,
+          }
         )
         .setColor("#ffaa00")
         .setTimestamp();
 
       // Créer le sélecteur de rôle
       const roleSelect = new StringSelectMenuBuilder()
-        .setCustomId("role_selection")
+        .setCustomId(`role_selection_${player._id}`)
         .setPlaceholder("Choisissez votre rôle")
         .addOptions([
           { label: "Top", value: "Top", description: "Top Lane" },
@@ -154,45 +143,65 @@ export class CustomGameHandler {
           { label: "Fill", value: "Fill", description: "Rôle flexible" },
         ]);
 
-      const row = new ActionRowBuilder().addComponents(roleSelect);
+      // Créer le sélecteur de cost
+      const costSelect = new StringSelectMenuBuilder()
+        .setCustomId(`cost_selection_${player._id}`)
+        .setPlaceholder("Choisissez votre niveau (1-5)")
+        .addOptions([
+          { label: "Niveau 1", value: "1", description: "Débutant" },
+          { label: "Niveau 2", value: "2", description: "Intermédiaire" },
+          { label: "Niveau 3", value: "3", description: "Bon" },
+          { label: "Niveau 4", value: "4", description: "Très bon" },
+          { label: "Niveau 5", value: "5", description: "Expert" },
+        ]);
 
-      await channel.send({
-        content: `<@${players
-          .map((p) => p.userId)
-          .join("> <@")}> Sélectionnez vos rôles !`,
+      const row1 = new ActionRowBuilder().addComponents(roleSelect);
+      const row2 = new ActionRowBuilder().addComponents(costSelect);
+
+      await interaction.reply({
+        content:
+          "✅ Vous avez rejoint la queue ! Choisissez maintenant votre rôle et niveau :",
         embeds: [embed],
-        components: [row],
+        components: [row1, row2],
+        ephemeral: true,
       });
-
-      // Démarrer le timer pour la sélection de rôle
-      setTimeout(() => this.handleRoleSelectionTimeout(channel, queue), 60000);
     } catch (error) {
-      Logger.error(`[CUSTOM_GAME] Erreur sélection rôle: ${error.message}`);
+      Logger.error(
+        `[CUSTOM_GAME] Erreur affichage sélection: ${error.message}`
+      );
     }
   }
 
   async handleRoleSelection(interaction) {
     try {
-      const role = interaction.values[0];
-      const queue = await this.getOrCreateQueue();
+      const playerId = interaction.customId.split("_")[2];
+      const selectedRole = interaction.values[0];
 
-      // Mettre à jour le rôle du joueur
-      await Player.findOneAndUpdate(
-        { userId: interaction.user.id, queueId: queue._id },
-        { selectedRole: role }
+      const player = await Player.findById(playerId);
+      if (!player) {
+        await interaction.reply({
+          content: "❌ Joueur non trouvé.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Mettre à jour le rôle
+      player.selectedRole = selectedRole;
+      await player.save();
+
+      Logger.info(
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} a choisi le rôle: ${selectedRole}`
       );
 
       await interaction.reply({
-        content: `✅ Rôle sélectionné : **${role}**`,
+        content: `✅ Rôle sélectionné: **${selectedRole}**\nMaintenant choisissez votre niveau !`,
         ephemeral: true,
       });
 
-      // Vérifier si tous les joueurs ont sélectionné leur rôle
-      const players = await Player.find({ queueId: queue._id });
-      const playersWithRole = players.filter((p) => p.selectedRole);
-
-      if (playersWithRole.length === 10) {
-        await this.startCostSelection(interaction.channel, queue);
+      // Vérifier si le joueur a déjà choisi son cost
+      if (player.selectedCost) {
+        await this.checkQueueFull(interaction.channel, player.queueId);
       }
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur sélection rôle: ${error.message}`);
@@ -203,81 +212,76 @@ export class CustomGameHandler {
     }
   }
 
-  async startCostSelection(channel, queue) {
-    try {
-      queue.currentPhase = "cost_selection";
-      await queue.save();
-
-      const players = await Player.find({ queueId: queue._id });
-
-      const embed = new EmbedBuilder()
-        .setTitle("📊 Sélection du Niveau (Cost)")
-        .setDescription("Attribuez un cost de 1 à 5 représentant votre niveau.")
-        .addFields(
-          { name: "1", value: "Débutant", inline: true },
-          { name: "2", value: "Intermédiaire", inline: true },
-          { name: "3", value: "Bon", inline: true },
-          { name: "4", value: "Très bon", inline: true },
-          { name: "5", value: "Excellent", inline: true }
-        )
-        .setColor("#ffaa00")
-        .setTimestamp();
-
-      const costSelect = new StringSelectMenuBuilder()
-        .setCustomId("cost_selection")
-        .setPlaceholder("Choisissez votre cost (1-5)")
-        .addOptions([
-          { label: "Cost 1 - Débutant", value: "1" },
-          { label: "Cost 2 - Intermédiaire", value: "2" },
-          { label: "Cost 3 - Bon", value: "3" },
-          { label: "Cost 4 - Très bon", value: "4" },
-          { label: "Cost 5 - Excellent", value: "5" },
-        ]);
-
-      const row = new ActionRowBuilder().addComponents(costSelect);
-
-      await channel.send({
-        content: `<@${players
-          .map((p) => p.userId)
-          .join("> <@")}> Sélectionnez vos costs !`,
-        embeds: [embed],
-        components: [row],
-      });
-
-      setTimeout(() => this.handleCostSelectionTimeout(channel, queue), 60000);
-    } catch (error) {
-      Logger.error(`[CUSTOM_GAME] Erreur sélection cost: ${error.message}`);
-    }
-  }
-
   async handleCostSelection(interaction) {
     try {
-      const cost = parseInt(interaction.values[0]);
-      const queue = await this.getOrCreateQueue();
+      const playerId = interaction.customId.split("_")[2];
+      const selectedCost = parseInt(interaction.values[0]);
 
-      await Player.findOneAndUpdate(
-        { userId: interaction.user.id, queueId: queue._id },
-        { selectedCost: cost }
+      const player = await Player.findById(playerId);
+      if (!player) {
+        await interaction.reply({
+          content: "❌ Joueur non trouvé.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Mettre à jour le cost
+      player.selectedCost = selectedCost;
+      await player.save();
+
+      Logger.info(
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} a choisi le niveau: ${selectedCost}`
       );
 
       await interaction.reply({
-        content: `✅ Cost sélectionné : **${cost}**`,
+        content: `✅ Niveau sélectionné: **${selectedCost}**\nVous êtes maintenant dans la queue !`,
         ephemeral: true,
       });
 
-      const players = await Player.find({ queueId: queue._id });
-      const playersWithCost = players.filter((p) => p.selectedCost);
-
-      if (playersWithCost.length === 10) {
-        await this.buildTeams(interaction.channel, queue);
+      // Vérifier si le joueur a déjà choisi son rôle
+      if (player.selectedRole) {
+        await this.checkQueueFull(interaction.channel, player.queueId);
       }
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur sélection cost: ${error.message}`);
       await interaction.reply({
-        content: "❌ Erreur lors de la sélection du cost.",
+        content: "❌ Erreur lors de la sélection du niveau.",
         ephemeral: true,
       });
     }
+  }
+
+  async checkQueueFull(channel, queueId) {
+    try {
+      const queue = await Queue.findById(queueId);
+      const players = await Player.find({
+        queueId: queueId,
+        selectedRole: { $ne: null },
+        selectedCost: { $ne: null },
+      });
+
+      Logger.info(
+        `[CUSTOM_GAME] Joueurs complets dans la queue: ${players.length}/10`
+      );
+
+      if (players.length === 10) {
+        Logger.info(`[CUSTOM_GAME] Queue pleine, construction des équipes...`);
+        await this.buildTeams(channel, queue);
+      } else {
+        await this.updateQueueEmbed(channel, queue);
+      }
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur vérification queue: ${error.message}`);
+    }
+  }
+
+  async startRoleSelection(channel, queue) {
+    // Cette méthode n'est plus utilisée - supprimée
+  }
+
+  async startCostSelection(channel, queue) {
+    // Cette méthode n'est plus utilisée - supprimée
   }
 
   async buildTeams(channel, queue) {
@@ -319,45 +323,99 @@ export class CustomGameHandler {
   }
 
   async displayTeams(channel, result, queue) {
-    const team1Embed = new EmbedBuilder()
-      .setTitle("🔵 Équipe 1")
-      .setColor("#0066ff")
-      .addFields(
-        result.team1.map((player) => ({
-          name: player.assignedRole,
-          value: `<@${player.userId}> (Cost: ${player.selectedCost})`,
-          inline: true,
-        }))
-      )
-      .setFooter({ text: `Cost moyen: ${result.team1Cost.toFixed(2)}` });
+    try {
+      const team1Embed = new EmbedBuilder()
+        .setTitle("🔵 Équipe 1")
+        .setColor("#0066ff")
+        .addFields(
+          result.team1.map((player) => ({
+            name: `${player.assignedRole} (Demandé: ${player.selectedRole})`,
+            value: `<@${player.userId}> - Niveau ${player.selectedCost}`,
+            inline: true,
+          }))
+        )
+        .setFooter({ text: `Cost moyen: ${result.team1Cost.toFixed(2)}` });
 
-    const team2Embed = new EmbedBuilder()
-      .setTitle("🔴 Équipe 2")
-      .setColor("#ff0000")
-      .addFields(
-        result.team2.map((player) => ({
-          name: player.assignedRole,
-          value: `<@${player.userId}> (Cost: ${player.selectedCost})`,
-          inline: true,
-        }))
-      )
-      .setFooter({ text: `Cost moyen: ${result.team2Cost.toFixed(2)}` });
+      const team2Embed = new EmbedBuilder()
+        .setTitle("🔴 Équipe 2")
+        .setColor("#ff0000")
+        .addFields(
+          result.team2.map((player) => ({
+            name: `${player.assignedRole} (Demandé: ${player.selectedRole})`,
+            value: `<@${player.userId}> - Niveau ${player.selectedCost}`,
+            inline: true,
+          }))
+        )
+        .setFooter({ text: `Cost moyen: ${result.team2Cost.toFixed(2)}` });
 
-    const summaryEmbed = new EmbedBuilder()
-      .setTitle("🎮 Équipes Créées !")
-      .setDescription(`Écart de cost: **${result.costDifference.toFixed(2)}**`)
-      .setColor("#00ff00")
-      .setTimestamp();
+      const summaryEmbed = new EmbedBuilder()
+        .setTitle("🎮 Équipes Créées !")
+        .setDescription(
+          `Écart de cost: **${result.costDifference.toFixed(2)}**`
+        )
+        .addFields(
+          {
+            name: "🔵 Équipe 1",
+            value: `Cost moyen: ${result.team1Cost.toFixed(2)}`,
+            inline: true,
+          },
+          {
+            name: "🔴 Équipe 2",
+            value: `Cost moyen: ${result.team2Cost.toFixed(2)}`,
+            inline: true,
+          },
+          {
+            name: "Équilibrage",
+            value:
+              result.costDifference <= 1 ? "✅ Équilibré" : "⚠️ Déséquilibré",
+            inline: true,
+          }
+        )
+        .setColor("#00ff00")
+        .setTimestamp();
 
-    await channel.send({
-      content: `<@${result.team1
-        .map((p) => p.userId)
-        .join("> <@")}> <@${result.team2.map((p) => p.userId).join("> <@")}>`,
-      embeds: [summaryEmbed, team1Embed, team2Embed],
-    });
+      // Créer un embed détaillé avec tous les choix
+      const detailsEmbed = new EmbedBuilder()
+        .setTitle("📋 Détails des Choix")
+        .setDescription("Rôles demandés vs rôles assignés")
+        .setColor("#ffff00")
+        .addFields(
+          {
+            name: "🔵 Équipe 1",
+            value: result.team1
+              .map(
+                (p) =>
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost})`
+              )
+              .join("\n"),
+            inline: false,
+          },
+          {
+            name: "🔴 Équipe 2",
+            value: result.team2
+              .map(
+                (p) =>
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost})`
+              )
+              .join("\n"),
+            inline: false,
+          }
+        );
 
-    queue.currentPhase = "completed";
-    await queue.save();
+      await channel.send({
+        content: `<@${result.team1
+          .map((p) => p.userId)
+          .join("> <@")}> <@${result.team2.map((p) => p.userId).join("> <@")}>`,
+        embeds: [summaryEmbed, team1Embed, team2Embed, detailsEmbed],
+      });
+
+      queue.currentPhase = "completed";
+      await queue.save();
+
+      Logger.info(`[CUSTOM_GAME] Équipes affichées avec succès`);
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur affichage équipes: ${error.message}`);
+    }
   }
 
   async stopCustomGame(message) {
@@ -431,13 +489,21 @@ export class CustomGameHandler {
   async updateQueueEmbed(channel, queue) {
     try {
       const players = await Player.find({ queueId: queue._id });
+      const completePlayers = players.filter(
+        (p) => p.selectedRole && p.selectedCost
+      );
+      const incompletePlayers = players.filter(
+        (p) => !p.selectedRole || !p.selectedCost
+      );
 
       // Logs détaillés
+      Logger.info(`[CUSTOM_GAME] Nombre total de joueurs: ${players.length}`);
+      Logger.info(`[CUSTOM_GAME] Joueurs complets: ${completePlayers.length}`);
       Logger.info(
-        `[CUSTOM_GAME] Nombre de joueurs dans la queue: ${players.length}`
+        `[CUSTOM_GAME] Joueurs incomplets: ${incompletePlayers.length}`
       );
       Logger.info(
-        `[CUSTOM_GAME] IDs des joueurs: ${players
+        `[CUSTOM_GAME] IDs des joueurs complets: ${completePlayers
           .map((p) => p.userId)
           .join(", ")}`
       );
@@ -446,7 +512,11 @@ export class CustomGameHandler {
         .setTitle("🎮 Queue 5v5 Custom")
         .setDescription("Rejoignez la queue pour participer à une partie 5v5 !")
         .addFields(
-          { name: "Joueurs", value: `${players.length}/10`, inline: true },
+          {
+            name: "Joueurs complets",
+            value: `${completePlayers.length}/10`,
+            inline: true,
+          },
           {
             name: "Phase",
             value:
@@ -464,12 +534,29 @@ export class CustomGameHandler {
         .setColor("#00ff00")
         .setTimestamp();
 
-      // Ajouter la liste des joueurs si il y en a
-      if (players.length > 0) {
-        const playerList = players.map((p) => `<@${p.userId}>`).join("\n");
+      // Ajouter la liste des joueurs complets avec leurs infos
+      if (completePlayers.length > 0) {
+        const playerList = completePlayers
+          .map(
+            (p) =>
+              `<@${p.userId}> - **${p.selectedRole}** (Niveau ${p.selectedCost})`
+          )
+          .join("\n");
         embed.addFields({
           name: "Joueurs inscrits",
           value: playerList,
+          inline: false,
+        });
+      }
+
+      // Ajouter la liste des joueurs incomplets
+      if (incompletePlayers.length > 0) {
+        const incompleteList = incompletePlayers
+          .map((p) => `<@${p.userId}> - En cours de sélection`)
+          .join("\n");
+        embed.addFields({
+          name: "En cours de sélection",
+          value: incompleteList,
           inline: false,
         });
       }
