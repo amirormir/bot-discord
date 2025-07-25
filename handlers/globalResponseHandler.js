@@ -4,7 +4,6 @@ import { BazouzouTrigger } from "../models/BazouzouTrigger.js";
 
 export class GlobalResponseHandler {
   constructor() {
-    this.messageCounter = 0;
     this.globalResponses = [
       "pas lu",
       "après qui ta demandé",
@@ -12,7 +11,6 @@ export class GlobalResponseHandler {
       "qui lui dit ?",
       "@https://tenor.com/fr/view/benzema-karim-benzema-arrete-arrête-arrete-arrete-arrete-gif-5404649638740761265",
     ];
-    // Utilisateurs bénis définis directement dans le code
     this.blessedUsers = [
       "277825453580877824",
       "700466241265205368",
@@ -35,6 +33,17 @@ export class GlobalResponseHandler {
 
   isCommand(message) {
     return message.content.startsWith("!");
+  }
+
+  shouldRespondGlobally() {
+    // 5% de chance de répondre à chaque message
+    return Math.random() < 0.05;
+  }
+
+  getRandomGlobalResponse() {
+    return this.globalResponses[
+      Math.floor(Math.random() * this.globalResponses.length)
+    ];
   }
 
   async getAdcConfig() {
@@ -99,17 +108,6 @@ export class GlobalResponseHandler {
     return config;
   }
 
-  shouldRespondGlobally() {
-    // Réduire drastiquement la fréquence : seulement 10% de chance après 20 messages
-    return this.messageCounter >= 20 && Math.random() < 0.1;
-  }
-
-  getRandomGlobalResponse() {
-    return this.globalResponses[
-      Math.floor(Math.random() * this.globalResponses.length)
-    ];
-  }
-
   async getRandomAdcResponse() {
     const config = await this.getAdcConfig();
     return config.responses[
@@ -125,40 +123,35 @@ export class GlobalResponseHandler {
   }
 
   async handleMessage(message) {
-    // Ne pas compter les commandes dans le compteur global
     if (this.isCommand(message)) {
       return;
     }
 
-    // Vérifier si l'utilisateur est bénit
     const isBlessed = this.isBlessedUser(message.author.id);
     if (!isBlessed) {
-      this.messageCounter++;
-      Logger.info(`[GLOBAL] Compteur global: ${this.messageCounter}`);
-    }
-
-    // Réponse globale tous les 5-6 messages
-    if (this.shouldRespondGlobally()) {
-      const response = this.getRandomGlobalResponse();
-      Logger.info(`[GLOBAL] Réponse globale: "${response}"`);
-      try {
-        await message.reply(response);
-        this.messageCounter = 0;
-      } catch (err) {
-        Logger.error(`[GLOBAL] Erreur réponse globale: ${err.message}`);
+      // Réponse globale avec 5% de chance
+      if (this.shouldRespondGlobally()) {
+        const response = this.getRandomGlobalResponse();
+        Logger.info(`[GLOBAL] Réponse globale: "${response}"`);
+        try {
+          await message.reply(response);
+        } catch (err) {
+          Logger.error(`[GLOBAL] Erreur réponse globale: ${err.message}`);
+        }
       }
     }
 
-    // Réponse ADC
+    // Vérifier les réponses ADC
     const adcConfig = await this.getAdcConfig();
     if (message.author.id === adcConfig.userId) {
-      const hasAdcTrigger = adcConfig.triggers.some((trigger) =>
+      const adcTriggers = adcConfig.triggers;
+      const hasAdcTrigger = adcTriggers.some((trigger) =>
         message.content.toLowerCase().includes(trigger.toLowerCase())
       );
 
       if (hasAdcTrigger) {
         const adcResponse = await this.getRandomAdcResponse();
-        Logger.info(`[ADC] Réponse ADC: "${adcResponse}"`);
+        Logger.info(`[ADC] Trigger ADC détecté, réponse: "${adcResponse}"`);
         try {
           await message.reply(adcResponse);
         } catch (err) {
@@ -167,7 +160,7 @@ export class GlobalResponseHandler {
       }
     }
 
-    // Réponse Bazouzou (seulement pour les bazouzou "petits")
+    // Vérifier les réponses bazouzou
     const bazouzouConfig = await this.getBazouzouConfig();
     const smallBazouzou = [
       "8=D",
@@ -182,7 +175,6 @@ export class GlobalResponseHandler {
       "8=D ¿",
       "8=3D",
     ];
-
     const hasSmallBazouzou = smallBazouzou.some((trigger) =>
       message.content.includes(trigger)
     );

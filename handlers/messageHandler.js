@@ -1,5 +1,4 @@
 import { Logger } from "../utils/logger.js";
-import { RandomResponseHandler } from "./randomResponseHandler.js";
 import { ImageModerationHandler } from "./imageModerationHandler.js";
 import { GlobalResponseHandler } from "./globalResponseHandler.js";
 import { MessageTemplateHandler } from "./messageTemplateHandler.js";
@@ -59,7 +58,6 @@ function hasAdminPermission(member) {
 
 export class MessageHandler {
   constructor() {
-    this.randomResponseHandler = new RandomResponseHandler();
     this.imageModerationHandler = new ImageModerationHandler();
     this.globalResponseHandler = new GlobalResponseHandler();
     this.messageTemplateHandler = new MessageTemplateHandler();
@@ -276,9 +274,6 @@ export class MessageHandler {
 
     // Gestion de la modération des images
     await this.imageModerationHandler.handleMessage(message);
-
-    // Gestion des réponses aléatoires
-    await this.randomResponseHandler.handleMessage(message);
 
     // Gestion des réponses globales et ADC
     await this.globalResponseHandler.handleMessage(message);

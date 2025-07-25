@@ -4,11 +4,12 @@ import { RANDOM_RESPONSES } from "../config/config.js";
 
 export class RandomResponseHandler {
   constructor() {
-    this.messageCounter = 0;
+    // Suppression du compteur, maintenant 5% de chance à chaque message
   }
 
   shouldRespond() {
-    return this.messageCounter >= 3 && Math.random() < 0.5;
+    // 5% de chance de répondre à chaque message
+    return Math.random() < 0.05;
   }
 
   getRandomResponse() {
@@ -20,7 +21,6 @@ export class RandomResponseHandler {
   async getTargetUserId() {
     let config = await RandomResponseUser.findOne();
     if (!config) {
-      // Si aucun user n'est en base, on en crée un par défaut
       config = await RandomResponseUser.create({
         userId: "277825453580877824",
       });
@@ -34,9 +34,8 @@ export class RandomResponseHandler {
       return;
     }
 
-    this.messageCounter++;
-    Logger.counter(
-      `Compteur de messages pour ${message.author.tag}: ${this.messageCounter}`
+    Logger.info(
+      `[RANDOM] Message de l'utilisateur cible: ${message.author.tag}`
     );
 
     if (this.shouldRespond()) {
@@ -45,8 +44,7 @@ export class RandomResponseHandler {
 
       try {
         await message.reply(randomResponse);
-        Logger.info("Réponse random envoyée, compteur reset à 0");
-        this.messageCounter = 0; // Reset du compteur après réponse
+        Logger.info("Réponse random envoyée avec succès");
       } catch (err) {
         Logger.error(
           `Erreur lors de l'envoi de la réponse aléatoire: ${err.message}`
