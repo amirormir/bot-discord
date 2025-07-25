@@ -6,6 +6,7 @@ import { MessageTemplateHandler } from "./messageTemplateHandler.js";
 import { CustomGameHandler } from "./customGameHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
 import { RandomResponseUser } from "../models/RandomResponseUser.js";
+import { EmbedBuilder } from "discord.js";
 
 function parseDiscordId(input) {
   // Enlève <@, <@!, >, espaces, etc. pour ne garder que l'ID pur
@@ -102,6 +103,14 @@ export class MessageHandler {
       await this.customGameHandler.rerollTeams(message);
       return;
     }
+    if (message.content === "!custom test") {
+      await this.customGameHandler.simulateTestPlayers(message);
+      return;
+    }
+    if (message.content === "!custom random") {
+      await this.customGameHandler.simulateRandomPlayers(message);
+      return;
+    }
 
     // Commandes de gestion des utilisateurs surveillés
     if (message.content.startsWith("!addwatch ")) {
@@ -162,29 +171,62 @@ export class MessageHandler {
 
     // Commande pour lister toutes les commandes
     if (message.content === "!help") {
-      await message.reply(
-        `**Commandes disponibles :**\n\n` +
-          `**🎮 Custom 5v5 :**\n` +
-          `!custom start : Démarrer une queue 5v5\n` +
-          `!custom stop : Arrêter la queue\n` +
-          `!custom reset : Vider la queue\n` +
-          `!custom reroll : Refaire les équipes\n\n` +
-          `**👥 Gestion des utilisateurs surveillés :**\n` +
-          `!addwatch <userId> : Ajouter un utilisateur surveillé\n` +
-          `!removewatch <userId> : Retirer un utilisateur surveillé\n\n` +
-          `**🎲 Gestion des réponses random :**\n` +
-          `!setrandomuser <userId> : Définir l'utilisateur cible des réponses random\n` +
-          `!removerandomuser : Désactiver les réponses random\n\n` +
-          `**📝 Gestion des templates :**\n` +
-          `!createtemplate <nom> <contenu> : Créer un template de message\n` +
-          `!listtemplates : Lister tous les templates\n` +
-          `!deletetemplate <nom> : Supprimer un template\n` +
-          `!sendmessage : Envoyer un message via sélecteur\n\n` +
-          `**🎯 Autres :**\n` +
-          `!bazouzou : Afficher tous les bazouzou disponibles\n` +
-          `!help : Afficher cette liste de commandes\n\n` +
-          `⚠️ **Toutes les commandes nécessitent la permission Administrateur**`
-      );
+      const helpEmbed = new EmbedBuilder()
+        .setTitle("🤖 Commandes du Bot")
+        .setColor("#00ff00")
+        .addFields(
+          {
+            name: "🎮 Queue 5v5 Custom",
+            value: [
+              "`!custom start` - Démarrer une queue 5v5",
+              "`!custom stop` - Arrêter et vider la queue",
+              "`!custom reset` - Vider la queue et recommencer",
+              "`!custom reroll` - Refaire les équipes avec les joueurs actuels",
+              "`!custom test` - Créer 10 joueurs de test prédéfinis",
+              "`!custom random` - Créer 10 joueurs avec rôles/niveaux aléatoires",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "👥 Gestion des utilisateurs surveillés",
+            value: [
+              "`!addwatch <@user>` - Ajouter un utilisateur surveillé",
+              "`!removewatch <@user>` - Retirer un utilisateur surveillé",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "🎲 Gestion des réponses aléatoires",
+            value: [
+              "`!setrandomuser <@user>` - Définir l'utilisateur pour les réponses aléatoires",
+              "`!removerandomuser` - Retirer l'utilisateur des réponses aléatoires",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "📝 Gestion des templates de messages",
+            value: [
+              "`!createtemplate <nom> <contenu>` - Créer un template",
+              "`!listtemplates` - Lister tous les templates",
+              "`!deletetemplate <nom>` - Supprimer un template",
+              "`!sendmessage` - Envoyer un template via sélecteur",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "🎯 Autres commandes",
+            value: [
+              "`!bazouzou` - Envoyer un bazouzou aléatoire",
+              "`!help` - Afficher cette aide",
+            ].join("\n"),
+            inline: false,
+          }
+        )
+        .setFooter({
+          text: "Toutes les commandes nécessitent la permission Administrateur",
+        });
+
+      await message.reply({ embeds: [helpEmbed] });
       return;
     }
 

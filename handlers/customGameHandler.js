@@ -767,4 +767,135 @@ export class CustomGameHandler {
     // Gérer le timeout de sélection de cost
     Logger.info(`[CUSTOM_GAME] Timeout sélection cost`);
   }
+
+  async simulateTestPlayers(message) {
+    try {
+      const queue = await this.getOrCreateQueue();
+
+      // Vérifier si il y a déjà des joueurs
+      const existingPlayers = await Player.countDocuments({
+        queueId: queue._id,
+      });
+      if (existingPlayers > 0) {
+        await message.reply(
+          "❌ Il y a déjà des joueurs dans la queue. Utilisez `!custom reset` d'abord."
+        );
+        return;
+      }
+
+      // Créer 10 joueurs de test avec des rôles et niveaux variés
+      const testPlayers = [
+        { username: "TestPlayer1", selectedRole: "Top", selectedCost: 4 },
+        { username: "TestPlayer2", selectedRole: "Jungle", selectedCost: 3 },
+        { username: "TestPlayer3", selectedRole: "Mid", selectedCost: 5 },
+        { username: "TestPlayer4", selectedRole: "ADC", selectedCost: 2 },
+        { username: "TestPlayer5", selectedRole: "Support", selectedCost: 3 },
+        { username: "TestPlayer6", selectedRole: "Top", selectedCost: 4 },
+        { username: "TestPlayer7", selectedRole: "Jungle", selectedCost: 2 },
+        { username: "TestPlayer8", selectedRole: "Mid", selectedCost: 3 },
+        { username: "TestPlayer9", selectedRole: "Fill", selectedCost: 4 },
+        { username: "TestPlayer10", selectedRole: "Fill", selectedCost: 3 },
+      ];
+
+      // Créer les joueurs dans la DB
+      for (const testPlayer of testPlayers) {
+        await Player.create({
+          userId: `test_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`,
+          username: testPlayer.username,
+          queueId: queue._id,
+          selectedRole: testPlayer.selectedRole,
+          selectedCost: testPlayer.selectedCost,
+        });
+      }
+
+      Logger.info(
+        `[CUSTOM_GAME] 10 joueurs de test créés par ${message.author.tag}`
+      );
+
+      // Mettre à jour l'embed
+      await this.updateQueueEmbed(message.channel, queue);
+
+      await message.reply(
+        "✅ 10 joueurs de test créés ! Les équipes vont se construire automatiquement."
+      );
+
+      // Construire automatiquement les équipes
+      setTimeout(async () => {
+        await this.buildTeams(message.channel, queue);
+      }, 2000);
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur simulation joueurs: ${error.message}`);
+      await message.reply("❌ Erreur lors de la création des joueurs de test.");
+    }
+  }
+
+  async simulateRandomPlayers(message) {
+    try {
+      const queue = await this.getOrCreateQueue();
+
+      // Vérifier si il y a déjà des joueurs
+      const existingPlayers = await Player.countDocuments({
+        queueId: queue._id,
+      });
+      if (existingPlayers > 0) {
+        await message.reply(
+          "❌ Il y a déjà des joueurs dans la queue. Utilisez `!custom reset` d'abord."
+        );
+        return;
+      }
+
+      const roles = ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"];
+      const testPlayers = [];
+
+      // Créer 10 joueurs avec des rôles et niveaux aléatoires
+      for (let i = 1; i <= 10; i++) {
+        const randomRole = roles[Math.floor(Math.random() * roles.length)];
+        const randomCost = Math.floor(Math.random() * 5) + 1; // 1-5
+
+        testPlayers.push({
+          username: `RandomPlayer${i}`,
+          selectedRole: randomRole,
+          selectedCost: randomCost,
+        });
+      }
+
+      // Créer les joueurs dans la DB
+      for (const testPlayer of testPlayers) {
+        await Player.create({
+          userId: `random_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`,
+          username: testPlayer.username,
+          queueId: queue._id,
+          selectedRole: testPlayer.selectedRole,
+          selectedCost: testPlayer.selectedCost,
+        });
+      }
+
+      Logger.info(
+        `[CUSTOM_GAME] 10 joueurs aléatoires créés par ${message.author.tag}`
+      );
+
+      // Mettre à jour l'embed
+      await this.updateQueueEmbed(message.channel, queue);
+
+      await message.reply(
+        "✅ 10 joueurs aléatoires créés ! Les équipes vont se construire automatiquement."
+      );
+
+      // Construire automatiquement les équipes
+      setTimeout(async () => {
+        await this.buildTeams(message.channel, queue);
+      }, 2000);
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur simulation joueurs aléatoires: ${error.message}`
+      );
+      await message.reply(
+        "❌ Erreur lors de la création des joueurs aléatoires."
+      );
+    }
+  }
 }

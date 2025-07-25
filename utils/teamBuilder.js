@@ -38,20 +38,62 @@ export class TeamBuilder {
     const team1 = [];
     const team2 = [];
 
-    // Distribuer d'abord les joueurs avec des rôles spécifiques
+    // Distribuer les joueurs avec des rôles spécifiques de manière équilibrée
+    const roleCounts = { Top: 0, Jungle: 0, Mid: 0, ADC: 0, Support: 0 };
+
     for (const player of specificRolePlayers) {
-      if (team1.length < 5) {
+      roleCounts[player.selectedRole]++;
+    }
+
+    Logger.info(
+      `[TEAM_BUILDER] Répartition des rôles spécifiques:`,
+      roleCounts
+    );
+
+    // Distribuer les joueurs spécifiques
+    for (const player of specificRolePlayers) {
+      if (team1.length < 5 && !this.hasRole(team1, player.selectedRole)) {
         team1.push({
           ...player,
           assignedRole: player.selectedRole,
           teamId: 1,
         });
-      } else {
+        Logger.info(
+          `[TEAM_BUILDER] ${player.username} (${player.selectedRole}) → Équipe 1`
+        );
+      } else if (
+        team2.length < 5 &&
+        !this.hasRole(team2, player.selectedRole)
+      ) {
         team2.push({
           ...player,
           assignedRole: player.selectedRole,
           teamId: 2,
         });
+        Logger.info(
+          `[TEAM_BUILDER] ${player.username} (${player.selectedRole}) → Équipe 2`
+        );
+      } else {
+        // Si le rôle est déjà pris dans les deux équipes, on le met dans l'équipe la moins remplie
+        if (team1.length <= team2.length) {
+          team1.push({
+            ...player,
+            assignedRole: player.selectedRole,
+            teamId: 1,
+          });
+          Logger.info(
+            `[TEAM_BUILDER] ${player.username} (${player.selectedRole}) → Équipe 1 (doublon)`
+          );
+        } else {
+          team2.push({
+            ...player,
+            assignedRole: player.selectedRole,
+            teamId: 2,
+          });
+          Logger.info(
+            `[TEAM_BUILDER] ${player.username} (${player.selectedRole}) → Équipe 2 (doublon)`
+          );
+        }
       }
     }
 
@@ -88,6 +130,13 @@ export class TeamBuilder {
       return null;
     }
 
+    // Vérifier qu'il n'y a pas de doublons
+    const team1Roles = team1.map((p) => p.assignedRole);
+    const team2Roles = team2.map((p) => p.assignedRole);
+
+    Logger.info(`[TEAM_BUILDER] Rôles équipe 1: ${team1Roles.join(", ")}`);
+    Logger.info(`[TEAM_BUILDER] Rôles équipe 2: ${team2Roles.join(", ")}`);
+
     // Calculer les costs moyens
     const team1Cost =
       team1.reduce((sum, player) => sum + player.selectedCost, 0) / 5;
@@ -111,6 +160,10 @@ export class TeamBuilder {
       team2Cost,
       costDifference,
     };
+  }
+
+  static hasRole(team, role) {
+    return team.some((player) => player.assignedRole === role);
   }
 
   static getMissingRole(team) {
