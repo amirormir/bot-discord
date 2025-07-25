@@ -50,6 +50,8 @@ export class CustomGameHandler {
   async joinQueue(interaction) {
     try {
       const queue = await this.getOrCreateQueue();
+      Logger.info(`[CUSTOM_GAME] Queue ID: ${queue._id}`);
+
       const playerCount = await Player.countDocuments({ queueId: queue._id });
 
       Logger.info(
@@ -90,7 +92,7 @@ export class CustomGameHandler {
       });
 
       Logger.info(
-        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) ajouté à la queue`
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) ajouté à la queue avec ID: ${newPlayer._id}`
       );
 
       await interaction.reply({
@@ -360,6 +362,18 @@ export class CustomGameHandler {
 
   async stopCustomGame(message) {
     try {
+      // Supprimer le message de la queue s'il existe
+      if (this.queueMessage) {
+        try {
+          await this.queueMessage.delete();
+          Logger.info(`[CUSTOM_GAME] Message de queue supprimé`);
+        } catch (error) {
+          Logger.error(
+            `[CUSTOM_GAME] Erreur suppression message: ${error.message}`
+          );
+        }
+      }
+
       await Queue.updateMany({ isActive: true }, { isActive: false });
       await Player.deleteMany({});
 

@@ -9,6 +9,11 @@ const playerSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  queueId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Queue",
+    required: true,
+  },
   selectedRole: {
     type: String,
     enum: ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"],
