@@ -23,43 +23,69 @@ export class TeamBuilder {
       return null;
     }
 
-    // Algorithme simple : alterner les joueurs par niveau
-    // Trier les joueurs par niveau décroissant
-    const sortedPlayers = [...players].sort(
-      (a, b) => b.selectedCost - a.selectedCost
+    // Séparer les joueurs par type
+    const specificRolePlayers = players.filter(
+      (p) => p.selectedRole !== "Fill"
     );
+    const fillPlayers = players.filter((p) => p.selectedRole === "Fill");
 
     Logger.info(
-      `[TEAM_BUILDER] Joueurs triés par niveau:`,
-      sortedPlayers.map((p) => `${p.username} (${p.selectedCost})`)
+      `[TEAM_BUILDER] Joueurs avec rôles spécifiques: ${specificRolePlayers.length}`
     );
+    Logger.info(`[TEAM_BUILDER] Joueurs Fill: ${fillPlayers.length}`);
 
+    // Créer les équipes
     const team1 = [];
     const team2 = [];
 
-    // Distribuer les joueurs alternativement
-    for (let i = 0; i < sortedPlayers.length; i++) {
-      const player = sortedPlayers[i];
-
-      if (i % 2 === 0) {
+    // Distribuer d'abord les joueurs avec des rôles spécifiques
+    for (const player of specificRolePlayers) {
+      if (team1.length < 5) {
         team1.push({
           ...player,
-          assignedRole:
-            player.selectedRole === "Fill"
-              ? this.assignFillRole(team1)
-              : player.selectedRole,
+          assignedRole: player.selectedRole,
           teamId: 1,
         });
       } else {
         team2.push({
           ...player,
-          assignedRole:
-            player.selectedRole === "Fill"
-              ? this.assignFillRole(team2)
-              : player.selectedRole,
+          assignedRole: player.selectedRole,
           teamId: 2,
         });
       }
+    }
+
+    // Remplir les équipes avec les joueurs Fill
+    for (const fillPlayer of fillPlayers) {
+      if (team1.length < 5) {
+        const missingRole = this.getMissingRole(team1);
+        team1.push({
+          ...fillPlayer,
+          assignedRole: missingRole,
+          teamId: 1,
+        });
+        Logger.info(
+          `[TEAM_BUILDER] Fill ${fillPlayer.username} assigné ${missingRole} dans équipe 1`
+        );
+      } else if (team2.length < 5) {
+        const missingRole = this.getMissingRole(team2);
+        team2.push({
+          ...fillPlayer,
+          assignedRole: missingRole,
+          teamId: 2,
+        });
+        Logger.info(
+          `[TEAM_BUILDER] Fill ${fillPlayer.username} assigné ${missingRole} dans équipe 2`
+        );
+      }
+    }
+
+    // Vérifier que les équipes sont complètes
+    if (team1.length !== 5 || team2.length !== 5) {
+      Logger.error(
+        `[TEAM_BUILDER] Équipes incomplètes: Team1=${team1.length}, Team2=${team2.length}`
+      );
+      return null;
     }
 
     // Calculer les costs moyens
@@ -87,8 +113,8 @@ export class TeamBuilder {
     };
   }
 
-  static assignFillRole(team) {
-    // Rôles requis
+  static getMissingRole(team) {
+    // Rôles requis pour une équipe complète
     const requiredRoles = ["Top", "Jungle", "Mid", "ADC", "Support"];
 
     // Trouver les rôles déjà assignés dans l'équipe
@@ -101,7 +127,10 @@ export class TeamBuilder {
       }
     }
 
-    // Si tous les rôles sont assignés, retourner le premier (ne devrait pas arriver)
+    // Si tous les rôles sont assignés (ne devrait pas arriver), retourner le premier
+    Logger.warn(
+      `[TEAM_BUILDER] Tous les rôles sont déjà assignés dans l'équipe`
+    );
     return requiredRoles[0];
   }
 }

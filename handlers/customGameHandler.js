@@ -136,7 +136,7 @@ export class CustomGameHandler {
         `[CUSTOM_GAME] Compteurs de rôles: ${JSON.stringify(roleCounts)}`
       );
 
-      // Rôles disponibles (max 2 par rôle)
+      // Rôles disponibles (max 2 par rôle, sauf Fill qui n'a pas de limite)
       const availableRoles = [];
       const roleOptions = [
         { label: "Top", value: "Top", description: "Top Lane" },
@@ -148,7 +148,7 @@ export class CustomGameHandler {
       ];
 
       roleOptions.forEach((role) => {
-        if (roleCounts[role.value] < 2) {
+        if (role.value === "Fill" || roleCounts[role.value] < 2) {
           availableRoles.push(role);
         } else {
           Logger.info(
@@ -263,8 +263,8 @@ export class CustomGameHandler {
         }
       });
 
-      // Vérifier si le rôle est locké
-      if (roleCounts[selectedRole] >= 2) {
+      // Vérifier si le rôle est locké (sauf Fill qui n'a pas de limite)
+      if (selectedRole !== "Fill" && roleCounts[selectedRole] >= 2) {
         Logger.info(
           `[CUSTOM_GAME] Rôle ${selectedRole} locké par ${interaction.user.tag}`
         );
