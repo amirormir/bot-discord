@@ -100,7 +100,8 @@ export class GlobalResponseHandler {
   }
 
   shouldRespondGlobally() {
-    return this.messageCounter >= 5 && Math.random() < 0.3;
+    // Réduire drastiquement la fréquence : seulement 10% de chance après 20 messages
+    return this.messageCounter >= 20 && Math.random() < 0.1;
   }
 
   getRandomGlobalResponse() {

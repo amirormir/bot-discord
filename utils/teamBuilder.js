@@ -6,120 +6,60 @@ export class TeamBuilder {
       `[TEAM_BUILDER] Construction d'équipes pour ${players.length} joueurs`
     );
 
-    // Grouper les joueurs par rôle préféré
-    const playersByRole = {
-      Top: [],
-      Jungle: [],
-      Mid: [],
-      ADC: [],
-      Support: [],
-      Fill: [],
-    };
-
-    players.forEach((player) => {
-      playersByRole[player.selectedRole].push(player);
+    // Log des joueurs pour debug
+    players.forEach((player, index) => {
+      Logger.info(
+        `[TEAM_BUILDER] Joueur ${index + 1}: ${player.username} - ${
+          player.selectedRole
+        } (Niveau ${player.selectedCost})`
+      );
     });
 
-    Logger.info(`[TEAM_BUILDER] Répartition par rôle:`, playersByRole);
-
-    // Générer toutes les combinaisons possibles
-    const allCombinations = this.generateAllCombinations(playersByRole);
-
-    if (allCombinations.length === 0) {
-      Logger.error(`[TEAM_BUILDER] Aucune combinaison valide trouvée`);
+    // Vérifier qu'on a bien 10 joueurs
+    if (players.length !== 10) {
+      Logger.error(
+        `[TEAM_BUILDER] Nombre de joueurs incorrect: ${players.length}`
+      );
       return null;
     }
 
-    // Trouver la meilleure combinaison (écart de cost minimal)
-    const bestCombination = this.findBestCombination(allCombinations);
-
-    Logger.info(
-      `[TEAM_BUILDER] Meilleure combinaison trouvée avec écart de cost: ${bestCombination.costDifference}`
+    // Algorithme simple : alterner les joueurs par niveau
+    // Trier les joueurs par niveau décroissant
+    const sortedPlayers = [...players].sort(
+      (a, b) => b.selectedCost - a.selectedCost
     );
 
-    return bestCombination;
-  }
+    Logger.info(
+      `[TEAM_BUILDER] Joueurs triés par niveau:`,
+      sortedPlayers.map((p) => `${p.username} (${p.selectedCost})`)
+    );
 
-  static generateAllCombinations(playersByRole) {
-    const combinations = [];
-    const requiredRoles = ["Top", "Jungle", "Mid", "ADC", "Support"];
-
-    // Créer toutes les permutations possibles des joueurs Fill
-    const fillPlayers = playersByRole.Fill || [];
-    const fillPermutations = this.getPermutations(fillPlayers);
-
-    // Pour chaque permutation de Fill, essayer de remplir les rôles manquants
-    for (const fillPermutation of fillPermutations) {
-      const combination = this.tryCombination(
-        playersByRole,
-        fillPermutation,
-        requiredRoles
-      );
-      if (combination) {
-        combinations.push(combination);
-      }
-    }
-
-    return combinations;
-  }
-
-  static tryCombination(playersByRole, fillPermutation, requiredRoles) {
     const team1 = [];
     const team2 = [];
-    let fillIndex = 0;
 
-    // Assigner d'abord les joueurs avec des rôles spécifiques
-    for (const role of requiredRoles) {
-      const rolePlayers = playersByRole[role] || [];
+    // Distribuer les joueurs alternativement
+    for (let i = 0; i < sortedPlayers.length; i++) {
+      const player = sortedPlayers[i];
 
-      if (rolePlayers.length >= 2) {
-        // Plusieurs joueurs pour ce rôle, les assigner aux deux équipes
-        team1.push({ ...rolePlayers[0], assignedRole: role, teamId: 1 });
-        team2.push({ ...rolePlayers[1], assignedRole: role, teamId: 2 });
-      } else if (rolePlayers.length === 1) {
-        // Un seul joueur pour ce rôle, l'assigner à l'équipe 1
-        team1.push({ ...rolePlayers[0], assignedRole: role, teamId: 1 });
-
-        // Utiliser un joueur Fill pour l'équipe 2
-        if (fillIndex < fillPermutation.length) {
-          team2.push({
-            ...fillPermutation[fillIndex],
-            assignedRole: role,
-            teamId: 2,
-          });
-          fillIndex++;
-        } else {
-          return null; // Pas assez de joueurs Fill
-        }
+      if (i % 2 === 0) {
+        team1.push({
+          ...player,
+          assignedRole:
+            player.selectedRole === "Fill"
+              ? this.assignFillRole(team1)
+              : player.selectedRole,
+          teamId: 1,
+        });
       } else {
-        // Aucun joueur pour ce rôle, utiliser des joueurs Fill
-        if (fillIndex < fillPermutation.length) {
-          team1.push({
-            ...fillPermutation[fillIndex],
-            assignedRole: role,
-            teamId: 1,
-          });
-          fillIndex++;
-        } else {
-          return null;
-        }
-
-        if (fillIndex < fillPermutation.length) {
-          team2.push({
-            ...fillPermutation[fillIndex],
-            assignedRole: role,
-            teamId: 2,
-          });
-          fillIndex++;
-        } else {
-          return null;
-        }
+        team2.push({
+          ...player,
+          assignedRole:
+            player.selectedRole === "Fill"
+              ? this.assignFillRole(team2)
+              : player.selectedRole,
+          teamId: 2,
+        });
       }
-    }
-
-    // Vérifier que les deux équipes ont 5 joueurs
-    if (team1.length !== 5 || team2.length !== 5) {
-      return null;
     }
 
     // Calculer les costs moyens
@@ -128,6 +68,15 @@ export class TeamBuilder {
     const team2Cost =
       team2.reduce((sum, player) => sum + player.selectedCost, 0) / 5;
     const costDifference = Math.abs(team1Cost - team2Cost);
+
+    Logger.info(
+      `[TEAM_BUILDER] Équipe 1 (Cost: ${team1Cost.toFixed(2)}):`,
+      team1.map((p) => `${p.username} - ${p.assignedRole}`)
+    );
+    Logger.info(
+      `[TEAM_BUILDER] Équipe 2 (Cost: ${team2Cost.toFixed(2)}):`,
+      team2.map((p) => `${p.username} - ${p.assignedRole}`)
+    );
 
     return {
       team1,
@@ -138,30 +87,21 @@ export class TeamBuilder {
     };
   }
 
-  static getPermutations(arr) {
-    if (arr.length <= 1) return [arr];
+  static assignFillRole(team) {
+    // Rôles requis
+    const requiredRoles = ["Top", "Jungle", "Mid", "ADC", "Support"];
 
-    const permutations = [];
-    for (let i = 0; i < arr.length; i++) {
-      const current = arr[i];
-      const remaining = arr.slice(0, i).concat(arr.slice(i + 1));
-      const remainingPerms = this.getPermutations(remaining);
+    // Trouver les rôles déjà assignés dans l'équipe
+    const assignedRoles = team.map((player) => player.assignedRole);
 
-      for (const perm of remainingPerms) {
-        permutations.push([current, ...perm]);
+    // Trouver le premier rôle manquant
+    for (const role of requiredRoles) {
+      if (!assignedRoles.includes(role)) {
+        return role;
       }
     }
 
-    return permutations;
-  }
-
-  static findBestCombination(combinations) {
-    if (combinations.length === 0) return null;
-
-    // Trier par écart de cost croissant
-    combinations.sort((a, b) => a.costDifference - b.costDifference);
-
-    // Prendre la meilleure (écart minimal)
-    return combinations[0];
+    // Si tous les rôles sont assignés, retourner le premier (ne devrait pas arriver)
+    return requiredRoles[0];
   }
 }

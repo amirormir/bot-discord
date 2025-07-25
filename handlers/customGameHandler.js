@@ -378,39 +378,45 @@ export class CustomGameHandler {
 
   async buildTeams(channel, queue) {
     try {
-      queue.currentPhase = "team_building";
-      await queue.save();
+      const players = await Player.find({
+        queueId: queue._id,
+        selectedRole: { $ne: null },
+        selectedCost: { $ne: null },
+      });
 
-      const players = await Player.find({ queueId: queue._id });
-      const result = TeamBuilder.buildTeams(players);
+      Logger.info(
+        `[CUSTOM_GAME] Construction des équipes avec ${players.length} joueurs`
+      );
 
-      if (!result) {
+      if (players.length !== 10) {
         await channel.send(
-          "❌ Impossible de créer des équipes équilibrées. Réessayez avec `!custom reroll`."
+          `❌ Il faut exactement 10 joueurs pour créer les équipes. Actuellement: ${players.length}`
         );
         return;
       }
 
-      // Sauvegarder les équipes
-      for (const player of result.team1) {
-        await Player.findOneAndUpdate(
-          { userId: player.userId, queueId: queue._id },
-          { assignedRole: player.assignedRole, teamId: player.teamId }
-        );
+      // Convertir les documents Mongoose en objets simples
+      const playersArray = players.map((player) => ({
+        userId: player.userId,
+        username: player.username,
+        selectedRole: player.selectedRole,
+        selectedCost: player.selectedCost,
+      }));
+
+      const result = TeamBuilder.buildTeams(playersArray);
+
+      if (!result) {
+        await channel.send("❌ Erreur lors de la construction des équipes.");
+        return;
       }
 
-      for (const player of result.team2) {
-        await Player.findOneAndUpdate(
-          { userId: player.userId, queueId: queue._id },
-          { assignedRole: player.assignedRole, teamId: player.teamId }
-        );
-      }
-
+      Logger.info(`[CUSTOM_GAME] Équipes construites avec succès`);
       await this.displayTeams(channel, result, queue);
     } catch (error) {
       Logger.error(
         `[CUSTOM_GAME] Erreur construction équipes: ${error.message}`
       );
+      await channel.send("❌ Erreur lors de la construction des équipes.");
     }
   }
 
