@@ -100,7 +100,7 @@ export class CustomGameHandler {
         return;
       }
 
-      // Ajouter le joueur à la queue
+      // Ajouter le joueur à la queue (sans selectedRole et selectedCost pour l'instant)
       await Player.create({
         userId: interaction.user.id,
         username: interaction.user.username,

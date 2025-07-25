@@ -12,13 +12,13 @@ const playerSchema = new mongoose.Schema({
   selectedRole: {
     type: String,
     enum: ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"],
-    required: true,
+    required: false,
   },
   selectedCost: {
     type: Number,
     min: 1,
     max: 5,
-    required: true,
+    required: false,
   },
   assignedRole: {
     type: String,
