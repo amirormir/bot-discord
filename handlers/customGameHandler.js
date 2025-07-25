@@ -15,6 +15,7 @@ export class CustomGameHandler {
     this.currentQueue = null;
     this.roleSelectionTimeouts = new Map();
     this.costSelectionTimeouts = new Map();
+    this.queueMessage = null; // Ajout de cette propriété
   }
 
   async getOrCreateQueue() {
@@ -27,46 +28,19 @@ export class CustomGameHandler {
 
   async startCustomGame(message) {
     try {
-      // Vérifier si une queue est déjà active
-      const existingQueue = await Queue.findOne({ isActive: true });
-      if (existingQueue) {
-        await message.reply(
-          "❌ Une queue 5v5 est déjà active ! Utilisez `!custom stop` pour l'arrêter."
-        );
-        return;
-      }
-
-      // Créer une nouvelle queue
-      const queue = await Queue.create({ isActive: true });
-      this.currentQueue = queue;
-
-      // Créer l'embed de la queue
-      const embed = new EmbedBuilder()
-        .setTitle("🎮 Queue 5v5 Custom")
-        .setDescription("Rejoignez la queue pour participer à une partie 5v5 !")
-        .addFields(
-          { name: "Joueurs", value: "0/10", inline: true },
-          { name: "Statut", value: "En attente", inline: true },
-          { name: "Phase", value: "Recrutement", inline: true }
-        )
-        .setColor("#00ff00")
-        .setTimestamp();
-
-      // Créer le bouton pour rejoindre
-      const joinButton = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("join_queue")
-          .setLabel("Rejoindre la Queue")
-          .setStyle(ButtonStyle.Primary)
-          .setEmoji("🎮")
-      );
-
-      await message.reply({
-        embeds: [embed],
-        components: [joinButton],
-      });
+      const queue = await this.getOrCreateQueue();
+      queue.isActive = true;
+      queue.currentPhase = "waiting";
+      await queue.save();
 
       Logger.info(`[CUSTOM_GAME] Queue 5v5 démarrée par ${message.author.tag}`);
+
+      // Initialiser l'embed de la queue
+      await this.updateQueueEmbed(message.channel, queue);
+
+      await message.reply(
+        "✅ Queue 5v5 démarrée ! Utilisez le bouton pour rejoindre."
+      );
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur démarrage queue: ${error.message}`);
       await message.reply("❌ Erreur lors du démarrage de la queue.");
@@ -77,6 +51,11 @@ export class CustomGameHandler {
     try {
       const queue = await this.getOrCreateQueue();
       const playerCount = await Player.countDocuments({ queueId: queue._id });
+
+      Logger.info(
+        `[CUSTOM_GAME] Tentative de rejointe par ${interaction.user.tag} (${interaction.user.id})`
+      );
+      Logger.info(`[CUSTOM_GAME] Nombre actuel de joueurs: ${playerCount}`);
 
       if (playerCount >= 10) {
         await interaction.reply({
@@ -93,6 +72,9 @@ export class CustomGameHandler {
       });
 
       if (existingPlayer) {
+        Logger.info(
+          `[CUSTOM_GAME] Joueur ${interaction.user.tag} déjà dans la queue`
+        );
         await interaction.reply({
           content: "❌ Vous êtes déjà dans la queue !",
           ephemeral: true,
@@ -101,11 +83,15 @@ export class CustomGameHandler {
       }
 
       // Ajouter le joueur à la queue (sans selectedRole et selectedCost pour l'instant)
-      await Player.create({
+      const newPlayer = await Player.create({
         userId: interaction.user.id,
         username: interaction.user.username,
         queueId: queue._id,
       });
+
+      Logger.info(
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) ajouté à la queue`
+      );
 
       await interaction.reply({
         content: "✅ Vous avez rejoint la queue !",
@@ -116,6 +102,9 @@ export class CustomGameHandler {
       const newPlayerCount = await Player.countDocuments({
         queueId: queue._id,
       });
+
+      Logger.info(`[CUSTOM_GAME] Nouveau nombre de joueurs: ${newPlayerCount}`);
+
       if (newPlayerCount === 10) {
         await this.startRoleSelection(interaction.channel, queue);
       } else {
@@ -375,6 +364,7 @@ export class CustomGameHandler {
       await Player.deleteMany({});
 
       this.currentQueue = null;
+      this.queueMessage = null; // Reset de l'embed
       this.roleSelectionTimeouts.clear();
       this.costSelectionTimeouts.clear();
 
@@ -392,6 +382,9 @@ export class CustomGameHandler {
       const queue = await this.getOrCreateQueue();
       queue.currentPhase = "waiting";
       await queue.save();
+
+      // Mettre à jour l'embed
+      await this.updateQueueEmbed(message.channel, queue);
 
       await message.reply("✅ Queue vidée et remise à zéro.");
       Logger.info(`[CUSTOM_GAME] Queue reset par ${message.author.tag}`);
@@ -422,8 +415,120 @@ export class CustomGameHandler {
   }
 
   async updateQueueEmbed(channel, queue) {
-    // Cette méthode mettrait à jour l'embed de la queue
-    // Implémentation simplifiée pour l'exemple
+    try {
+      const players = await Player.find({ queueId: queue._id });
+
+      // Logs détaillés
+      Logger.info(
+        `[CUSTOM_GAME] Nombre de joueurs dans la queue: ${players.length}`
+      );
+      Logger.info(
+        `[CUSTOM_GAME] IDs des joueurs: ${players
+          .map((p) => p.userId)
+          .join(", ")}`
+      );
+
+      const embed = new EmbedBuilder()
+        .setTitle("🎮 Queue 5v5 Custom")
+        .setDescription("Rejoignez la queue pour participer à une partie 5v5 !")
+        .addFields(
+          { name: "Joueurs", value: `${players.length}/10`, inline: true },
+          {
+            name: "Phase",
+            value:
+              queue.currentPhase === "waiting"
+                ? "En attente"
+                : queue.currentPhase,
+            inline: true,
+          },
+          {
+            name: "Status",
+            value: queue.isActive ? "🟢 Active" : "🔴 Inactive",
+            inline: true,
+          }
+        )
+        .setColor("#00ff00")
+        .setTimestamp();
+
+      // Ajouter la liste des joueurs si il y en a
+      if (players.length > 0) {
+        const playerList = players.map((p) => `<@${p.userId}>`).join("\n");
+        embed.addFields({
+          name: "Joueurs inscrits",
+          value: playerList,
+          inline: false,
+        });
+      }
+
+      // Créer le bouton de rejointe
+      const joinButton = new ButtonBuilder()
+        .setCustomId("join_queue")
+        .setLabel("Rejoindre la Queue")
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("➕");
+
+      // Créer le bouton de quitte
+      const leaveButton = new ButtonBuilder()
+        .setCustomId("leave_queue")
+        .setLabel("Quitter la Queue")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("➖");
+
+      const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
+
+      // Envoyer ou mettre à jour l'embed
+      if (this.queueMessage) {
+        await this.queueMessage.edit({ embeds: [embed], components: [row] });
+      } else {
+        this.queueMessage = await channel.send({
+          embeds: [embed],
+          components: [row],
+        });
+      }
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur update embed: ${error.message}`);
+    }
+  }
+
+  async leaveQueue(interaction) {
+    try {
+      const queue = await this.getOrCreateQueue();
+
+      // Vérifier si le joueur est dans la queue
+      const player = await Player.findOne({
+        userId: interaction.user.id,
+        queueId: queue._id,
+      });
+
+      if (!player) {
+        await interaction.reply({
+          content: "❌ Vous n'êtes pas dans la queue !",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Supprimer le joueur
+      await Player.findByIdAndDelete(player._id);
+
+      Logger.info(
+        `[CUSTOM_GAME] Joueur ${interaction.user.tag} (${interaction.user.id}) a quitté la queue`
+      );
+
+      await interaction.reply({
+        content: "✅ Vous avez quitté la queue !",
+        ephemeral: true,
+      });
+
+      // Mettre à jour l'embed
+      await this.updateQueueEmbed(interaction.channel, queue);
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur leave queue: ${error.message}`);
+      await interaction.reply({
+        content: "❌ Erreur lors de la sortie de la queue.",
+        ephemeral: true,
+      });
+    }
   }
 
   async handleRoleSelectionTimeout(channel, queue) {
