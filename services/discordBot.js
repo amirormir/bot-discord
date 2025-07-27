@@ -32,7 +32,6 @@ export class DiscordBot {
   async onMessageCreate(message) {
     try {
       await this.messageHandler.handleMessage(message);
-      await this.messageTemplateHandler.handleMessage(message);
     } catch (error) {
       Logger.error(`Erreur lors du traitement du message: ${error.message}`);
     }
