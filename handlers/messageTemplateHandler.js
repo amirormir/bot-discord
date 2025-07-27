@@ -212,12 +212,36 @@ export class MessageTemplateHandler {
       }
 
       // Récupérer le nom du template depuis le message précédent
-      const messageContent = interaction.message.content;
-      const templateNameMatch = messageContent.match(
-        /Template sélectionné : \*\*(.*?)\*\*/
+      const interactionMessageContent = interaction.message.content;
+      Logger.info(
+        `[TEMPLATE] Contenu du message: "${interactionMessageContent}"`
       );
 
-      if (!templateNameMatch) {
+      // Méthode plus robuste pour extraire le nom du template
+      let templateName = null;
+
+      // Essayer plusieurs patterns
+      const patterns = [
+        /Template sélectionné : \*\*(.*?)\*\*/,
+        /Template sélectionné : \*\*(.*?)\*\*\n/,
+        /Template sélectionné : \*\*(.*?)\*\*\n\n/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = interactionMessageContent.match(pattern);
+        if (match) {
+          templateName = match[1].trim();
+          Logger.info(
+            `[TEMPLATE] Template trouvé avec pattern: "${templateName}"`
+          );
+          break;
+        }
+      }
+
+      if (!templateName) {
+        Logger.error(
+          `[TEMPLATE] Aucun pattern ne correspond au contenu: "${interactionMessageContent}"`
+        );
         await interaction.reply({
           content: "❌ Impossible de récupérer le template.",
           flags: 64, // Ephemeral flag
@@ -225,7 +249,6 @@ export class MessageTemplateHandler {
         return;
       }
 
-      const templateName = templateNameMatch[1];
       const template = await this.getTemplate(templateName);
 
       if (!template) {
@@ -237,7 +260,14 @@ export class MessageTemplateHandler {
       }
 
       // Envoyer le message dans le channel sélectionné
-      await channel.send(template.content);
+      let messageContent = template.content;
+
+      // Ajouter @everyone si le message contient "everyone" ou "@everyone"
+      if (messageContent.toLowerCase().includes("everyone")) {
+        messageContent = "@everyone " + messageContent;
+      }
+
+      await channel.send(messageContent);
 
       await interaction.update({
         content: `✅ Message envoyé dans ${channel} !`,
