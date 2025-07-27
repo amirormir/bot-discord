@@ -81,12 +81,16 @@ export class MessageTemplateHandler {
       .setCustomId("final_channel_selector")
       .setPlaceholder("Choisissez un channel pour envoyer le message")
       .addOptions(
-        channels.map((channel) =>
-          new StringSelectMenuOptionBuilder()
-            .setLabel(channel.name)
+        channels.map((channel) => {
+          // Nettoyer le nom du channel pour éviter les caractères problématiques
+          const cleanName = channel.name
+            .replace(/[^\w\s-]/g, "")
+            .substring(0, 100);
+          return new StringSelectMenuOptionBuilder()
+            .setLabel(cleanName || channel.name.substring(0, 100))
             .setDescription(`#${channel.name}`)
-            .setValue(channel.id)
-        )
+            .setValue(channel.id.toString()); // S'assurer que c'est une string
+        })
       );
 
     return new ActionRowBuilder().addComponents(select);
@@ -117,12 +121,7 @@ export class MessageTemplateHandler {
       const channels = interaction.guild.channels.cache
         .filter((channel) => {
           // Vérification plus robuste pour les channels textuels
-          const isTextChannel =
-            channel.type === ChannelType.GuildText || channel.type === 0;
-          Logger.info(
-            `[TEMPLATE] Channel ${channel.name} (${channel.id}) - type: ${channel.type} - isText: ${isTextChannel}`
-          );
-          return isTextChannel;
+          return channel.type === ChannelType.GuildText || channel.type === 0;
         })
         .map((channel) => ({ id: channel.id, name: channel.name }))
         .sort((a, b) => a.name.localeCompare(b.name));
