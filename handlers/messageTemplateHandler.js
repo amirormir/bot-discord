@@ -4,6 +4,7 @@ import {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  ChannelType,
 } from "discord.js";
 
 export class MessageTemplateHandler {
@@ -99,21 +100,21 @@ export class MessageTemplateHandler {
       if (!template) {
         await interaction.reply({
           content: "❌ Template non trouvé.",
-          ephemeral: true,
+          flags: 64, // Ephemeral flag
         });
         return;
       }
 
       // Récupérer tous les channels textuels du serveur
       const channels = interaction.guild.channels.cache
-        .filter((channel) => channel.type === 0) // 0 = GUILD_TEXT
+        .filter((channel) => channel.type === ChannelType.GuildText)
         .map((channel) => ({ id: channel.id, name: channel.name }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       if (channels.length === 0) {
         await interaction.reply({
           content: "❌ Aucun channel textuel trouvé sur ce serveur.",
-          ephemeral: true,
+          flags: 64, // Ephemeral flag
         });
         return;
       }
@@ -131,7 +132,7 @@ export class MessageTemplateHandler {
       Logger.error(`[TEMPLATE] Erreur handleChannelSelector: ${error.message}`);
       await interaction.reply({
         content: "❌ Erreur lors de la sélection du template.",
-        ephemeral: true,
+        flags: 64, // Ephemeral flag
       });
     }
   }
@@ -144,7 +145,7 @@ export class MessageTemplateHandler {
       if (!channel) {
         await interaction.reply({
           content: "❌ Channel non trouvé.",
-          ephemeral: true,
+          flags: 64, // Ephemeral flag
         });
         return;
       }
@@ -158,7 +159,7 @@ export class MessageTemplateHandler {
       if (!templateNameMatch) {
         await interaction.reply({
           content: "❌ Impossible de récupérer le template.",
-          ephemeral: true,
+          flags: 64, // Ephemeral flag
         });
         return;
       }
@@ -169,7 +170,7 @@ export class MessageTemplateHandler {
       if (!template) {
         await interaction.reply({
           content: "❌ Template non trouvé.",
-          ephemeral: true,
+          flags: 64, // Ephemeral flag
         });
         return;
       }
@@ -187,7 +188,7 @@ export class MessageTemplateHandler {
       );
       await interaction.reply({
         content: "❌ Erreur lors de l'envoi du message.",
-        ephemeral: true,
+        flags: 64, // Ephemeral flag
       });
     }
   }
