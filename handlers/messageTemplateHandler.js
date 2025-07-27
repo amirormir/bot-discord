@@ -94,7 +94,10 @@ export class MessageTemplateHandler {
 
   async handleChannelSelector(interaction) {
     try {
+      Logger.info(`[TEMPLATE] Début handleChannelSelector`);
       const selectedTemplateName = interaction.values[0];
+      Logger.info(`[TEMPLATE] Template sélectionné: ${selectedTemplateName}`);
+
       const template = await this.getTemplate(selectedTemplateName);
 
       if (!template) {
@@ -105,11 +108,26 @@ export class MessageTemplateHandler {
         return;
       }
 
+      Logger.info(`[TEMPLATE] Template trouvé: ${template.name}`);
+      Logger.info(
+        `[TEMPLATE] Nombre total de channels: ${interaction.guild.channels.cache.size}`
+      );
+
       // Récupérer tous les channels textuels du serveur
       const channels = interaction.guild.channels.cache
-        .filter((channel) => channel.type === ChannelType.GuildText)
+        .filter((channel) => {
+          // Vérification plus robuste pour les channels textuels
+          const isTextChannel =
+            channel.type === ChannelType.GuildText || channel.type === 0;
+          Logger.info(
+            `[TEMPLATE] Channel ${channel.name} (${channel.id}) - type: ${channel.type} - isText: ${isTextChannel}`
+          );
+          return isTextChannel;
+        })
         .map((channel) => ({ id: channel.id, name: channel.name }))
         .sort((a, b) => a.name.localeCompare(b.name));
+
+      Logger.info(`[TEMPLATE] Channels textuels trouvés: ${channels.length}`);
 
       if (channels.length === 0) {
         await interaction.reply({
@@ -130,6 +148,7 @@ export class MessageTemplateHandler {
       });
     } catch (error) {
       Logger.error(`[TEMPLATE] Erreur handleChannelSelector: ${error.message}`);
+      Logger.error(`[TEMPLATE] Stack trace: ${error.stack}`);
       await interaction.reply({
         content: "❌ Erreur lors de la sélection du template.",
         flags: 64, // Ephemeral flag
