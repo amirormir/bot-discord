@@ -104,23 +104,39 @@ export class MessageTemplateHandler {
   }
 
   createFinalChannelSelector(templateName, channels) {
-    const select = new StringSelectMenuBuilder()
-      .setCustomId("final_channel_selector")
-      .setPlaceholder("Choisissez un channel pour envoyer le message")
-      .addOptions(
-        channels.map((channel) => {
-          // Nettoyer le nom du channel pour éviter les caractères problématiques
-          const cleanName = channel.name
-            .replace(/[^\w\s-]/g, "")
-            .substring(0, 100);
-          return new StringSelectMenuOptionBuilder()
-            .setLabel(cleanName || channel.name.substring(0, 100))
-            .setDescription(`#${channel.name}`)
-            .setValue(channel.id.toString()); // S'assurer que c'est une string
-        })
+    try {
+      Logger.info(
+        `[TEMPLATE] Création du menu de sélection de channel avec ${channels.length} channels`
       );
 
-    return new ActionRowBuilder().addComponents(select);
+      const options = [];
+      for (let i = 0; i < channels.length && i < 25; i++) {
+        // Discord limite à 25 options
+        const channel = channels[i];
+        const cleanName =
+          channel.name.replace(/[^\w\s-]/g, "").substring(0, 100) ||
+          channel.name.substring(0, 100);
+
+        Logger.info(`[TEMPLATE] Ajout option: ${cleanName} (${channel.id})`);
+
+        options.push(
+          new StringSelectMenuOptionBuilder()
+            .setLabel(cleanName)
+            .setDescription(`#${channel.name}`)
+            .setValue(channel.id)
+        );
+      }
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId("final_channel_selector")
+        .setPlaceholder("Choisissez un channel pour envoyer le message")
+        .addOptions(options);
+
+      return new ActionRowBuilder().addComponents(select);
+    } catch (error) {
+      Logger.error(`[TEMPLATE] Erreur création menu channel: ${error.message}`);
+      throw error;
+    }
   }
 
   async handleChannelSelector(interaction) {
