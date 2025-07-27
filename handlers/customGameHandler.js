@@ -1,6 +1,8 @@
 import { Logger } from "../utils/logger.js";
 import { Player } from "../models/Player.js";
 import { Queue } from "../models/Queue.js";
+import { PlayerStats } from "../models/PlayerStats.js";
+import { GameResult } from "../models/GameResult.js";
 import { TeamBuilder } from "../utils/teamBuilder.js";
 import {
   EmbedBuilder,
@@ -16,6 +18,7 @@ export class CustomGameHandler {
     this.roleSelectionTimeouts = new Map();
     this.costSelectionTimeouts = new Map();
     this.queueMessage = null; // Ajout de cette propriété
+    this.currentGameResult = null; // Stocke le résultat de la partie en cours
   }
 
   async getOrCreateQueue() {
@@ -500,12 +503,51 @@ export class CustomGameHandler {
           }
         );
 
+      // Créer les boutons pour déclarer le gagnant
+      const team1WinButton = new ButtonBuilder()
+        .setCustomId("team1_win")
+        .setLabel("Équipe 1 Gagne")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("🔵");
+
+      const team2WinButton = new ButtonBuilder()
+        .setCustomId("team2_win")
+        .setLabel("Équipe 2 Gagne")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("🔴");
+
+      const cancelButton = new ButtonBuilder()
+        .setCustomId("cancel_game")
+        .setLabel("Annuler")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("❌");
+
+      const buttonRow = new ActionRowBuilder().addComponents(
+        team1WinButton,
+        team2WinButton,
+        cancelButton
+      );
+
       await channel.send({
         content: `<@${result.team1
           .map((p) => p.userId)
           .join("> <@")}> <@${result.team2.map((p) => p.userId).join("> <@")}>`,
         embeds: [summaryEmbed, team1Embed, team2Embed, detailsEmbed],
+        components: [buttonRow],
       });
+
+      // Stocker le résultat de la partie en cours
+      this.currentGameResult = {
+        team1: {
+          players: result.team1,
+          averageCost: result.team1Cost,
+        },
+        team2: {
+          players: result.team2,
+          averageCost: result.team2Cost,
+        },
+        costDifference: result.costDifference,
+      };
 
       queue.currentPhase = "completed";
       await queue.save();
@@ -896,6 +938,250 @@ export class CustomGameHandler {
       await message.reply(
         "❌ Erreur lors de la création des joueurs aléatoires."
       );
+    }
+  }
+
+  // Nouvelles méthodes pour gérer les résultats des parties
+
+  async handleGameResult(interaction) {
+    try {
+      if (!this.currentGameResult) {
+        await interaction.reply({
+          content: "❌ Aucune partie en cours à terminer.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const winner = interaction.customId === "team1_win" ? "team1" : "team2";
+      const winnerTeam = this.currentGameResult[winner];
+      const loserTeam =
+        this.currentGameResult[winner === "team1" ? "team2" : "team1"];
+
+      // Sauvegarder le résultat de la partie
+      const gameResult = await GameResult.create({
+        gameId: `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        winner: winner,
+        team1: this.currentGameResult.team1,
+        team2: this.currentGameResult.team2,
+        costDifference: this.currentGameResult.costDifference,
+        endedBy: interaction.user.id,
+      });
+
+      // Mettre à jour les statistiques des joueurs
+      await this.updatePlayerStats(winnerTeam, loserTeam, true);
+      await this.updatePlayerStats(loserTeam, winnerTeam, false);
+
+      // Créer l'embed de résultat
+      const resultEmbed = new EmbedBuilder()
+        .setTitle("🏆 Résultat de la Partie")
+        .setDescription(
+          `**${
+            winner === "team1" ? "🔵 Équipe 1" : "🔴 Équipe 2"
+          }** remporte la victoire !`
+        )
+        .addFields(
+          {
+            name: "🔵 Équipe 1",
+            value: `Cost moyen: ${this.currentGameResult.team1.averageCost.toFixed(
+              2
+            )}`,
+            inline: true,
+          },
+          {
+            name: "🔴 Équipe 2",
+            value: `Cost moyen: ${this.currentGameResult.team2.averageCost.toFixed(
+              2
+            )}`,
+            inline: true,
+          },
+          {
+            name: "Écart de cost",
+            value: `${this.currentGameResult.costDifference.toFixed(2)}`,
+            inline: true,
+          }
+        )
+        .setColor(winner === "team1" ? "#0066ff" : "#ff0000")
+        .setTimestamp();
+
+      await interaction.reply({
+        content: "✅ Résultat enregistré !",
+        embeds: [resultEmbed],
+      });
+
+      // Réinitialiser le résultat de la partie en cours
+      this.currentGameResult = null;
+
+      Logger.info(
+        `[CUSTOM_GAME] Partie terminée - Gagnant: ${winner} par ${interaction.user.tag}`
+      );
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur gestion résultat: ${error.message}`);
+      await interaction.reply({
+        content: "❌ Erreur lors de l'enregistrement du résultat.",
+        ephemeral: true,
+      });
+    }
+  }
+
+  async updatePlayerStats(team, opponentTeam, isWin) {
+    try {
+      const opponentCost = opponentTeam.averageCost;
+
+      for (const player of team.players) {
+        // Trouver ou créer les statistiques du joueur
+        let playerStats = await PlayerStats.findOne({ userId: player.userId });
+
+        if (!playerStats) {
+          playerStats = await PlayerStats.create({
+            userId: player.userId,
+            username: player.username,
+          });
+        }
+
+        // Mettre à jour les statistiques
+        playerStats.updateStats(isWin, opponentCost);
+        await playerStats.save();
+
+        Logger.info(
+          `[CUSTOM_GAME] Stats mises à jour pour ${player.username}: ${
+            isWin ? "Victoire" : "Défaite"
+          } contre cost ${opponentCost.toFixed(2)}`
+        );
+      }
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur mise à jour stats: ${error.message}`);
+    }
+  }
+
+  async showLeaderboard(message) {
+    try {
+      const playerStats = await PlayerStats.find({})
+        .sort({ wins: -1, totalGames: -1 })
+        .limit(20);
+
+      if (playerStats.length === 0) {
+        await message.reply("📊 Aucune statistique disponible pour le moment.");
+        return;
+      }
+
+      const leaderboardEmbed = new EmbedBuilder()
+        .setTitle("🏆 Classement 5v5 Custom")
+        .setDescription("Top 20 des joueurs par nombre de victoires")
+        .setColor("#ffd700")
+        .setTimestamp();
+
+      let leaderboardText = "";
+      for (let i = 0; i < playerStats.length; i++) {
+        const stats = playerStats[i];
+        const medal =
+          i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+
+        leaderboardText += `${medal} **${stats.username}**\n`;
+        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${stats.winrate}%)\n`;
+
+        if (stats.totalGames > 0) {
+          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
+            2
+          )}\n`;
+          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
+            2
+          )}\n`;
+        }
+        leaderboardText += "\n";
+      }
+
+      leaderboardEmbed.addFields({
+        name: "Classement",
+        value: leaderboardText,
+        inline: false,
+      });
+
+      await message.reply({ embeds: [leaderboardEmbed] });
+      Logger.info(`[CUSTOM_GAME] Classement affiché par ${message.author.tag}`);
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur affichage classement: ${error.message}`
+      );
+      await message.reply("❌ Erreur lors de l'affichage du classement.");
+    }
+  }
+
+  async showPlayerStats(message, userId) {
+    try {
+      const playerStats = await PlayerStats.findOne({ userId: userId });
+
+      if (!playerStats) {
+        await message.reply("❌ Aucune statistique trouvée pour ce joueur.");
+        return;
+      }
+
+      const statsEmbed = new EmbedBuilder()
+        .setTitle(`📊 Statistiques de ${playerStats.username}`)
+        .setColor("#00ff00")
+        .addFields(
+          {
+            name: "📈 Général",
+            value: `Parties: ${playerStats.totalGames}\nVictoires: ${playerStats.wins}\nDéfaites: ${playerStats.losses}\nWinrate: ${playerStats.winrate}%`,
+            inline: true,
+          },
+          {
+            name: "🎯 Victoires",
+            value: `Cost moyen adversaires: ${playerStats.avgOpponentCostWhenWin.toFixed(
+              2
+            )}`,
+            inline: true,
+          },
+          {
+            name: "💀 Défaites",
+            value: `Cost moyen adversaires: ${playerStats.avgOpponentCostWhenLose.toFixed(
+              2
+            )}`,
+            inline: true,
+          }
+        )
+        .setTimestamp();
+
+      // Ajouter les détails par coût d'adversaire si disponibles
+      if (
+        playerStats.winsByOpponentCost.size > 0 ||
+        playerStats.lossesByOpponentCost.size > 0
+      ) {
+        let costDetails = "";
+
+        // Combiner tous les coûts uniques
+        const allCosts = new Set([
+          ...playerStats.winsByOpponentCost.keys(),
+          ...playerStats.lossesByOpponentCost.keys(),
+        ]);
+
+        for (const cost of allCosts) {
+          const wins = playerStats.winsByOpponentCost.get(cost) || 0;
+          const losses = playerStats.lossesByOpponentCost.get(cost) || 0;
+          const total = wins + losses;
+          const winrate = total > 0 ? ((wins / total) * 100).toFixed(1) : "0.0";
+
+          costDetails += `Cost ${cost}: ${wins}W/${losses}L (${winrate}%)\n`;
+        }
+
+        if (costDetails) {
+          statsEmbed.addFields({
+            name: "📊 Détails par coût d'adversaire",
+            value: costDetails,
+            inline: false,
+          });
+        }
+      }
+
+      await message.reply({ embeds: [statsEmbed] });
+      Logger.info(
+        `[CUSTOM_GAME] Stats affichées pour ${playerStats.username} par ${message.author.tag}`
+      );
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur affichage stats joueur: ${error.message}`
+      );
+      await message.reply("❌ Erreur lors de l'affichage des statistiques.");
     }
   }
 }

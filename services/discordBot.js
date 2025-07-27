@@ -67,6 +67,21 @@ export class DiscordBot {
         if (interaction.customId === "leave_queue") {
           await this.messageHandler.customGameHandler.leaveQueue(interaction);
         }
+        if (
+          interaction.customId === "team1_win" ||
+          interaction.customId === "team2_win"
+        ) {
+          await this.messageHandler.customGameHandler.handleGameResult(
+            interaction
+          );
+        }
+        if (interaction.customId === "cancel_game") {
+          await interaction.reply({
+            content: "❌ Partie annulée.",
+            ephemeral: true,
+          });
+          this.messageHandler.customGameHandler.currentGameResult = null;
+        }
       }
     } catch (error) {
       Logger.error(`Erreur interaction: ${error.message}`);

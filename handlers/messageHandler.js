@@ -109,6 +109,20 @@ export class MessageHandler {
       await this.customGameHandler.simulateRandomPlayers(message);
       return;
     }
+    if (message.content === "!classement") {
+      await this.customGameHandler.showLeaderboard(message);
+      return;
+    }
+    if (message.content.startsWith("!stats ")) {
+      const userId = message.content.split(" ")[1];
+      if (!userId) {
+        await message.reply("Usage : !stats <@user>");
+        return;
+      }
+      const cleanUserId = parseDiscordId(userId);
+      await this.customGameHandler.showPlayerStats(message, cleanUserId);
+      return;
+    }
 
     // Commandes de gestion des utilisateurs surveillés
     if (message.content.startsWith("!addwatch ")) {
@@ -182,6 +196,14 @@ export class MessageHandler {
               "`!custom reroll` - Refaire les équipes avec les joueurs actuels",
               "`!custom test` - Créer 10 joueurs de test prédéfinis",
               "`!custom random` - Créer 10 joueurs avec rôles/niveaux aléatoires",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "📊 Statistiques et Classement",
+            value: [
+              "`!classement` - Afficher le classement des joueurs",
+              "`!stats <@user>` - Afficher les stats détaillées d'un joueur",
             ].join("\n"),
             inline: false,
           },
