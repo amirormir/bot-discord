@@ -59,7 +59,7 @@ export class MessageTemplateHandler {
   createChannelSelector(templates) {
     const select = new StringSelectMenuBuilder()
       .setCustomId("channel_selector")
-      .setPlaceholder("Choisissez un channel pour envoyer le message")
+      .setPlaceholder("Choisissez un template à envoyer")
       .addOptions(
         templates.map((template) =>
           new StringSelectMenuOptionBuilder()
@@ -73,6 +73,123 @@ export class MessageTemplateHandler {
       );
 
     return new ActionRowBuilder().addComponents(select);
+  }
+
+  createFinalChannelSelector(templateName, channels) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId("final_channel_selector")
+      .setPlaceholder("Choisissez un channel pour envoyer le message")
+      .addOptions(
+        channels.map((channel) =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(channel.name)
+            .setDescription(`#${channel.name}`)
+            .setValue(channel.id)
+        )
+      );
+
+    return new ActionRowBuilder().addComponents(select);
+  }
+
+  async handleChannelSelector(interaction) {
+    try {
+      const selectedTemplateName = interaction.values[0];
+      const template = await this.getTemplate(selectedTemplateName);
+
+      if (!template) {
+        await interaction.reply({
+          content: "❌ Template non trouvé.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Récupérer tous les channels textuels du serveur
+      const channels = interaction.guild.channels.cache
+        .filter((channel) => channel.type === 0) // 0 = GUILD_TEXT
+        .map((channel) => ({ id: channel.id, name: channel.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (channels.length === 0) {
+        await interaction.reply({
+          content: "❌ Aucun channel textuel trouvé sur ce serveur.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const row = this.createFinalChannelSelector(
+        selectedTemplateName,
+        channels
+      );
+
+      await interaction.update({
+        content: `Template sélectionné : **${template.name}**\n\nContenu : ${template.content}\n\nChoisissez le channel de destination :`,
+        components: [row],
+      });
+    } catch (error) {
+      Logger.error(`[TEMPLATE] Erreur handleChannelSelector: ${error.message}`);
+      await interaction.reply({
+        content: "❌ Erreur lors de la sélection du template.",
+        ephemeral: true,
+      });
+    }
+  }
+
+  async handleFinalChannelSelector(interaction) {
+    try {
+      const selectedChannelId = interaction.values[0];
+      const channel = interaction.guild.channels.cache.get(selectedChannelId);
+
+      if (!channel) {
+        await interaction.reply({
+          content: "❌ Channel non trouvé.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Récupérer le nom du template depuis le message précédent
+      const messageContent = interaction.message.content;
+      const templateNameMatch = messageContent.match(
+        /Template sélectionné : \*\*(.*?)\*\*/
+      );
+
+      if (!templateNameMatch) {
+        await interaction.reply({
+          content: "❌ Impossible de récupérer le template.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const templateName = templateNameMatch[1];
+      const template = await this.getTemplate(templateName);
+
+      if (!template) {
+        await interaction.reply({
+          content: "❌ Template non trouvé.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Envoyer le message dans le channel sélectionné
+      await channel.send(template.content);
+
+      await interaction.update({
+        content: `✅ Message envoyé dans ${channel} !`,
+        components: [],
+      });
+    } catch (error) {
+      Logger.error(
+        `[TEMPLATE] Erreur handleFinalChannelSelector: ${error.message}`
+      );
+      await interaction.reply({
+        content: "❌ Erreur lors de l'envoi du message.",
+        ephemeral: true,
+      });
+    }
   }
 
   async handleMessage(message) {
