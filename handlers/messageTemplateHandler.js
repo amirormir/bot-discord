@@ -31,6 +31,12 @@ export class MessageTemplateHandler {
   async listTemplates() {
     try {
       const templates = await MessageTemplate.find().sort({ createdAt: -1 });
+      Logger.info(
+        `[TEMPLATE] Nombre de templates dans la DB: ${templates.length}`
+      );
+      templates.forEach((t) => {
+        Logger.info(`[TEMPLATE] Template DB: "${t.name}"`);
+      });
       return templates;
     } catch (error) {
       Logger.error(`[TEMPLATE] Erreur liste templates: ${error.message}`);
@@ -50,7 +56,15 @@ export class MessageTemplateHandler {
 
   async getTemplate(name) {
     try {
-      return await MessageTemplate.findOne({ name });
+      Logger.info(`[TEMPLATE] Recherche du template: "${name}"`);
+      const template = await MessageTemplate.findOne({ name });
+      Logger.info(`[TEMPLATE] Template trouvé: ${template ? "OUI" : "NON"}`);
+      if (template) {
+        Logger.info(
+          `[TEMPLATE] Template: ${template.name} - Contenu: ${template.content}`
+        );
+      }
+      return template;
     } catch (error) {
       Logger.error(`[TEMPLATE] Erreur récupération template: ${error.message}`);
       return null;
@@ -279,6 +293,13 @@ export class MessageTemplateHandler {
     // Commande pour envoyer un message via sélecteur
     if (message.content === "!sendmessage") {
       const templates = await this.listTemplates();
+      Logger.info(
+        `[TEMPLATE] Templates disponibles pour le menu: ${templates.length}`
+      );
+      templates.forEach((t) => {
+        Logger.info(`[TEMPLATE] Template menu: "${t.name}"`);
+      });
+
       if (templates.length === 0) {
         await message.reply(
           "Aucun template disponible. Créez-en un avec !createtemplate"
