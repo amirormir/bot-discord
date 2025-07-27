@@ -57,7 +57,20 @@ export class MessageTemplateHandler {
   async getTemplate(name) {
     try {
       Logger.info(`[TEMPLATE] Recherche du template: "${name}"`);
-      const template = await MessageTemplate.findOne({ name });
+
+      // Recherche exacte d'abord
+      let template = await MessageTemplate.findOne({ name });
+
+      // Si pas trouvé, recherche avec nettoyage (sans retours à la ligne)
+      if (!template) {
+        const cleanName = name.trim();
+        template = await MessageTemplate.findOne({
+          name: {
+            $regex: `^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`,
+          },
+        });
+      }
+
       Logger.info(`[TEMPLATE] Template trouvé: ${template ? "OUI" : "NON"}`);
       if (template) {
         Logger.info(
@@ -236,7 +249,7 @@ export class MessageTemplateHandler {
         return;
       }
 
-      const name = parts[1];
+      const name = parts[1].trim(); // Nettoyer le nom
       const content = parts.slice(2).join(" ");
 
       const result = await this.createTemplate(
