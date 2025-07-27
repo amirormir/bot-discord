@@ -220,27 +220,24 @@ export class MessageTemplateHandler {
       // Méthode plus robuste pour extraire le nom du template
       let templateName = null;
 
-      // Essayer plusieurs patterns
-      const patterns = [
-        /Template sélectionné : \*\*(.*?)\*\*/,
-        /Template sélectionné : \*\*(.*?)\*\*\n/,
-        /Template sélectionné : \*\*(.*?)\*\*\n\n/,
-      ];
-
-      for (const pattern of patterns) {
-        const match = interactionMessageContent.match(pattern);
-        if (match) {
-          templateName = match[1].trim();
-          Logger.info(
-            `[TEMPLATE] Template trouvé avec pattern: "${templateName}"`
-          );
-          break;
+      // Chercher le pattern "Template sélectionné : **nom**" de manière plus simple
+      const startIndex = interactionMessageContent.indexOf(
+        "Template sélectionné : **"
+      );
+      if (startIndex !== -1) {
+        const start = startIndex + "Template sélectionné : **".length;
+        const endIndex = interactionMessageContent.indexOf("**", start);
+        if (endIndex !== -1) {
+          templateName = interactionMessageContent
+            .substring(start, endIndex)
+            .trim();
+          Logger.info(`[TEMPLATE] Template trouvé: "${templateName}"`);
         }
       }
 
       if (!templateName) {
         Logger.error(
-          `[TEMPLATE] Aucun pattern ne correspond au contenu: "${interactionMessageContent}"`
+          `[TEMPLATE] Impossible d'extraire le nom du template du contenu: "${interactionMessageContent}"`
         );
         await interaction.reply({
           content: "❌ Impossible de récupérer le template.",
