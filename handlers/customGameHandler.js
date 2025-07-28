@@ -945,6 +945,16 @@ export class CustomGameHandler {
 
   async handleGameResult(interaction) {
     try {
+      // Vérifier que l'utilisateur est admin
+      if (!interaction.member.permissions.has("Administrator")) {
+        await interaction.reply({
+          content:
+            "❌ Seuls les administrateurs peuvent déclarer le gagnant d'une partie.",
+          ephemeral: true,
+        });
+        return;
+      }
+
       if (!this.currentGameResult) {
         await interaction.reply({
           content: "❌ Aucune partie en cours à terminer.",
@@ -958,6 +968,10 @@ export class CustomGameHandler {
       const loserTeam =
         this.currentGameResult[winner === "team1" ? "team2" : "team1"];
 
+      Logger.info(
+        `[CUSTOM_GAME] Déclaration de victoire par ${interaction.user.tag} - Gagnant: ${winner}`
+      );
+
       // Sauvegarder le résultat de la partie
       const gameResult = await GameResult.create({
         gameId: `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -967,6 +981,10 @@ export class CustomGameHandler {
         costDifference: this.currentGameResult.costDifference,
         endedBy: interaction.user.id,
       });
+
+      Logger.info(
+        `[CUSTOM_GAME] Résultat sauvegardé avec ID: ${gameResult.gameId}`
+      );
 
       // Mettre à jour les statistiques des joueurs
       await this.updatePlayerStats(winnerTeam, loserTeam, true);
@@ -1028,29 +1046,101 @@ export class CustomGameHandler {
     try {
       const opponentCost = opponentTeam.averageCost;
 
+      Logger.info(
+        `[CUSTOM_GAME] Mise à jour stats pour équipe ${
+          isWin ? "gagnante" : "perdante"
+        } (${team.players.length} joueurs)`
+      );
+
       for (const player of team.players) {
+        Logger.info(
+          `[CUSTOM_GAME] Traitement joueur: ${player.username} (${player.userId})`
+        );
+
         // Trouver ou créer les statistiques du joueur
         let playerStats = await PlayerStats.findOne({ userId: player.userId });
 
         if (!playerStats) {
+          Logger.info(
+            `[CUSTOM_GAME] Création nouvelle fiche stats pour ${player.username}`
+          );
           playerStats = await PlayerStats.create({
             userId: player.userId,
             username: player.username,
+            wins: 0,
+            losses: 0,
+            totalGames: 0,
+            avgOpponentCostWhenWin: 0,
+            avgOpponentCostWhenLose: 0,
+            winsByOpponentCost: new Map(),
+            lossesByOpponentCost: new Map(),
           });
         }
 
-        // Mettre à jour les statistiques
-        playerStats.updateStats(isWin, opponentCost);
+        // Mettre à jour les statistiques manuellement pour éviter les problèmes avec les méthodes virtuelles
+        playerStats.totalGames++;
+
+        if (isWin) {
+          playerStats.wins++;
+          // Mettre à jour le coût moyen des adversaires quand on gagne
+          if (playerStats.wins === 1) {
+            playerStats.avgOpponentCostWhenWin = opponentCost;
+          } else {
+            const totalCostWhenWin =
+              playerStats.avgOpponentCostWhenWin * (playerStats.wins - 1) +
+              opponentCost;
+            playerStats.avgOpponentCostWhenWin =
+              totalCostWhenWin / playerStats.wins;
+          }
+
+          // Incrémenter le compteur de victoires pour ce coût d'adversaire
+          const costKey = opponentCost.toString();
+          const currentWins = playerStats.winsByOpponentCost.get(costKey) || 0;
+          playerStats.winsByOpponentCost.set(costKey, currentWins + 1);
+
+          Logger.info(
+            `[CUSTOM_GAME] Victoire pour ${
+              player.username
+            } contre cost ${opponentCost.toFixed(2)}`
+          );
+        } else {
+          playerStats.losses++;
+          // Mettre à jour le coût moyen des adversaires quand on perd
+          if (playerStats.losses === 1) {
+            playerStats.avgOpponentCostWhenLose = opponentCost;
+          } else {
+            const totalCostWhenLose =
+              playerStats.avgOpponentCostWhenLose * (playerStats.losses - 1) +
+              opponentCost;
+            playerStats.avgOpponentCostWhenLose =
+              totalCostWhenLose / playerStats.losses;
+          }
+
+          // Incrémenter le compteur de défaites pour ce coût d'adversaire
+          const costKey = opponentCost.toString();
+          const currentLosses =
+            playerStats.lossesByOpponentCost.get(costKey) || 0;
+          playerStats.lossesByOpponentCost.set(costKey, currentLosses + 1);
+
+          Logger.info(
+            `[CUSTOM_GAME] Défaite pour ${
+              player.username
+            } contre cost ${opponentCost.toFixed(2)}`
+          );
+        }
+
+        playerStats.lastUpdated = new Date();
+
+        // Sauvegarder les modifications
         await playerStats.save();
 
         Logger.info(
-          `[CUSTOM_GAME] Stats mises à jour pour ${player.username}: ${
-            isWin ? "Victoire" : "Défaite"
-          } contre cost ${opponentCost.toFixed(2)}`
+          `[CUSTOM_GAME] Stats mises à jour pour ${player.username}: ${playerStats.wins}W/${playerStats.losses}L (${playerStats.totalGames} parties total)`
         );
       }
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur mise à jour stats: ${error.message}`);
+      throw error; // Propager l'erreur pour la gestion en amont
     }
   }
 
@@ -1059,6 +1149,10 @@ export class CustomGameHandler {
       const playerStats = await PlayerStats.find({})
         .sort({ wins: -1, totalGames: -1 })
         .limit(20);
+
+      Logger.info(
+        `[CUSTOM_GAME] Affichage classement - ${playerStats.length} joueurs trouvés`
+      );
 
       if (playerStats.length === 0) {
         await message.reply("📊 Aucune statistique disponible pour le moment.");
@@ -1077,8 +1171,14 @@ export class CustomGameHandler {
         const medal =
           i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
 
+        // Calculer le winrate manuellement
+        const winrate =
+          stats.totalGames > 0
+            ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
+            : "0.0";
+
         leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${stats.winrate}%)\n`;
+        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
 
         if (stats.totalGames > 0) {
           leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
@@ -1116,13 +1216,19 @@ export class CustomGameHandler {
         return;
       }
 
+      // Calculer le winrate manuellement
+      const winrate =
+        playerStats.totalGames > 0
+          ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
+          : "0.0";
+
       const statsEmbed = new EmbedBuilder()
         .setTitle(`📊 Statistiques de ${playerStats.username}`)
         .setColor("#00ff00")
         .addFields(
           {
             name: "📈 Général",
-            value: `Parties: ${playerStats.totalGames}\nVictoires: ${playerStats.wins}\nDéfaites: ${playerStats.losses}\nWinrate: ${playerStats.winrate}%`,
+            value: `Parties: ${playerStats.totalGames}\nVictoires: ${playerStats.wins}\nDéfaites: ${playerStats.losses}\nWinrate: ${winrate}%`,
             inline: true,
           },
           {
