@@ -47,16 +47,33 @@ export class RichPresenceService {
         this.isConnected = false;
       });
 
-      await this.rpc.login({ clientId: this.clientId });
+      // Tentative de connexion avec timeout
+      const connectionPromise = this.rpc.login({ clientId: this.clientId });
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout de connexion RPC")), 5000);
+      });
+
+      await Promise.race([connectionPromise, timeoutPromise]);
     } catch (error) {
       Logger.error(`[RICH_PRESENCE] Erreur initialisation: ${error.message}`);
-      Logger.info(
-        "[RICH_PRESENCE] Le Rich Presence ne fonctionne que si Discord Desktop est ouvert"
-      );
-      Logger.info(
-        "[RICH_PRESENCE] Le bot continuera de fonctionner normalement sans Rich Presence"
-      );
+
+      if (
+        error.message.includes("Could not connect") ||
+        error.message.includes("Timeout")
+      ) {
+        Logger.info(
+          "[RICH_PRESENCE] Discord Desktop n'est pas ouvert ou RPC non disponible"
+        );
+        Logger.info(
+          "[RICH_PRESENCE] Le Rich Presence ne fonctionne que si Discord Desktop est ouvert"
+        );
+        Logger.info(
+          "[RICH_PRESENCE] Le bot continuera de fonctionner normalement sans Rich Presence"
+        );
+      }
+
       this.isConnected = false;
+      this.rpc = null;
     }
   }
 
@@ -88,6 +105,7 @@ export class RichPresenceService {
       Logger.error(
         `[RICH_PRESENCE] Erreur mise à jour présence: ${error.message}`
       );
+      this.isConnected = false; // Marquer comme déconnecté en cas d'erreur
     }
   }
 
@@ -120,6 +138,7 @@ export class RichPresenceService {
       Logger.error(
         `[RICH_PRESENCE] Erreur mise à jour statut: ${error.message}`
       );
+      this.isConnected = false; // Marquer comme déconnecté en cas d'erreur
     }
   }
 
@@ -135,6 +154,7 @@ export class RichPresenceService {
       Logger.error(
         `[RICH_PRESENCE] Erreur effacement présence: ${error.message}`
       );
+      this.isConnected = false; // Marquer comme déconnecté en cas d'erreur
     }
   }
 
