@@ -1093,15 +1093,15 @@ export class CustomGameHandler {
               totalCostWhenWin / playerStats.wins;
           }
 
-          // Incrémenter le compteur de victoires pour ce coût d'adversaire
-          const costKey = opponentCost.toString();
+          // Incrémenter le compteur de victoires pour ce coût d'adversaire (utiliser un entier)
+          const costKey = Math.round(opponentCost).toString(); // Arrondir à l'entier le plus proche
           const currentWins = playerStats.winsByOpponentCost.get(costKey) || 0;
           playerStats.winsByOpponentCost.set(costKey, currentWins + 1);
 
           Logger.info(
             `[CUSTOM_GAME] Victoire pour ${
               player.username
-            } contre cost ${opponentCost.toFixed(2)}`
+            } contre cost ${opponentCost.toFixed(2)} (clé: ${costKey})`
           );
         } else {
           playerStats.losses++;
@@ -1116,8 +1116,8 @@ export class CustomGameHandler {
               totalCostWhenLose / playerStats.losses;
           }
 
-          // Incrémenter le compteur de défaites pour ce coût d'adversaire
-          const costKey = opponentCost.toString();
+          // Incrémenter le compteur de défaites pour ce coût d'adversaire (utiliser un entier)
+          const costKey = Math.round(opponentCost).toString(); // Arrondir à l'entier le plus proche
           const currentLosses =
             playerStats.lossesByOpponentCost.get(costKey) || 0;
           playerStats.lossesByOpponentCost.set(costKey, currentLosses + 1);
@@ -1125,7 +1125,7 @@ export class CustomGameHandler {
           Logger.info(
             `[CUSTOM_GAME] Défaite pour ${
               player.username
-            } contre cost ${opponentCost.toFixed(2)}`
+            } contre cost ${opponentCost.toFixed(2)} (clé: ${costKey})`
           );
         }
 
