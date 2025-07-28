@@ -1165,7 +1165,11 @@ export class CustomGameHandler {
         .setColor("#ffd700")
         .setTimestamp();
 
-      let leaderboardText = "";
+      // Diviser le classement en plusieurs champs si nécessaire
+      const maxFieldLength = 1024;
+      let currentFieldText = "";
+      let fieldCount = 0;
+
       for (let i = 0; i < playerStats.length; i++) {
         const stats = playerStats[i];
         const medal =
@@ -1177,25 +1181,56 @@ export class CustomGameHandler {
             ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
             : "0.0";
 
-        leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
+        const playerEntry = `${medal} **${stats.username}**\n   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
 
+        // Vérifier si on peut ajouter les détails de coût
+        let detailedEntry = playerEntry;
         if (stats.totalGames > 0) {
-          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
+          const costDetails = `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
             2
-          )}\n`;
-          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
+          )}\n   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
             2
-          )}\n`;
+          )}\n\n`;
+
+          // Vérifier si l'ajout des détails dépasserait la limite
+          if (
+            (currentFieldText + detailedEntry + costDetails).length <=
+            maxFieldLength
+          ) {
+            detailedEntry += costDetails;
+          } else {
+            detailedEntry += "\n";
+          }
+        } else {
+          detailedEntry += "\n";
         }
-        leaderboardText += "\n";
+
+        // Vérifier si on doit créer un nouveau champ
+        if ((currentFieldText + detailedEntry).length > maxFieldLength) {
+          // Ajouter le champ actuel
+          if (currentFieldText.trim()) {
+            leaderboardEmbed.addFields({
+              name: fieldCount === 0 ? "Classement" : `Classement (suite)`,
+              value: currentFieldText.trim(),
+              inline: false,
+            });
+            fieldCount++;
+          }
+          // Commencer un nouveau champ
+          currentFieldText = detailedEntry;
+        } else {
+          currentFieldText += detailedEntry;
+        }
       }
 
-      leaderboardEmbed.addFields({
-        name: "Classement",
-        value: leaderboardText,
-        inline: false,
-      });
+      // Ajouter le dernier champ s'il y a du contenu
+      if (currentFieldText.trim()) {
+        leaderboardEmbed.addFields({
+          name: fieldCount === 0 ? "Classement" : `Classement (suite)`,
+          value: currentFieldText.trim(),
+          inline: false,
+        });
+      }
 
       await message.reply({ embeds: [leaderboardEmbed] });
       Logger.info(`[CUSTOM_GAME] Classement affiché par ${message.author.tag}`);
