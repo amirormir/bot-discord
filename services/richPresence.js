@@ -1,15 +1,33 @@
 import { Client } from "discord-rpc";
 import { Logger } from "../utils/logger.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 export class RichPresenceService {
   constructor() {
     this.rpc = null;
-    this.clientId = "YOUR_CLIENT_ID"; // Remplace par ton Client ID Discord
+    this.clientId =
+      process.env.RICH_PRESENCE_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
     this.isConnected = false;
   }
 
   async initialize() {
     try {
+      if (!this.clientId) {
+        Logger.warning(
+          "[RICH_PRESENCE] Client ID non configuré. Rich Presence désactivé."
+        );
+        Logger.info(
+          "[RICH_PRESENCE] Ajoutez RICH_PRESENCE_CLIENT_ID ou DISCORD_CLIENT_ID dans votre .env"
+        );
+        return;
+      }
+
+      Logger.info(
+        `[RICH_PRESENCE] Initialisation avec Client ID: ${this.clientId}`
+      );
+
       this.rpc = new Client({ transport: "ipc" });
 
       this.rpc.on("ready", () => {
