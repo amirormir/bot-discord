@@ -39,14 +39,15 @@ export class CustomGameHandler {
       queue.currentPhase = "waiting";
       await queue.save();
 
-      Logger.info(`[CUSTOM_GAME] Queue 5v5 démarrée par ${message.author.tag}`);
-
-      // Initialiser l'embed de la queue
       await this.updateQueueEmbed(message.channel, queue);
+      await message.reply("✅ Queue 5v5 démarrée !");
 
-      await message.reply(
-        "✅ Queue 5v5 démarrée ! Utilisez le bouton pour rejoindre."
-      );
+      // Mettre à jour le Rich Presence
+      if (message.client.richPresence) {
+        message.client.updateRichPresenceForQueue(0, 10);
+      }
+
+      Logger.info(`[CUSTOM_GAME] Queue 5v5 démarrée par ${message.author.tag}`);
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur démarrage queue: ${error.message}`);
       await message.reply("❌ Erreur lors du démarrage de la queue.");
@@ -693,8 +694,35 @@ export class CustomGameHandler {
             inline: true,
           }
         )
-        .setColor("#00ff00")
+        .setColor(queue.isActive ? "#00ff00" : "#ff0000")
         .setTimestamp();
+
+      // Ajouter les joueurs complets
+      if (completePlayers.length > 0) {
+        const completeList = completePlayers
+          .map(
+            (p) =>
+              `• ${p.username} (${p.selectedRole} - Niveau ${p.selectedCost})`
+          )
+          .join("\n");
+        embed.addFields({
+          name: "✅ Joueurs complets",
+          value: completeList,
+          inline: false,
+        });
+      }
+
+      // Ajouter les joueurs incomplets
+      if (incompletePlayers.length > 0) {
+        const incompleteList = incompletePlayers
+          .map((p) => `• ${p.username} (En cours de sélection)`)
+          .join("\n");
+        embed.addFields({
+          name: "⏳ Joueurs en cours",
+          value: incompleteList,
+          inline: false,
+        });
+      }
 
       // Ajouter les rôles lockés
       if (lockedRoles.length > 0) {
@@ -705,60 +733,45 @@ export class CustomGameHandler {
         });
       }
 
-      // Ajouter la liste des joueurs complets avec leurs infos
-      if (completePlayers.length > 0) {
-        const playerList = completePlayers
-          .map(
-            (p) =>
-              `<@${p.userId}> - **${p.selectedRole}** (Niveau ${p.selectedCost})`
-          )
-          .join("\n");
-        embed.addFields({
-          name: "Joueurs inscrits",
-          value: playerList,
-          inline: false,
-        });
-      }
-
-      // Ajouter la liste des joueurs incomplets
-      if (incompletePlayers.length > 0) {
-        const incompleteList = incompletePlayers
-          .map((p) => `<@${p.userId}> - En cours de sélection`)
-          .join("\n");
-        embed.addFields({
-          name: "En cours de sélection",
-          value: incompleteList,
-          inline: false,
-        });
-      }
-
-      // Créer le bouton de rejointe
+      // Créer les boutons
       const joinButton = new ButtonBuilder()
         .setCustomId("join_queue")
         .setLabel("Rejoindre la Queue")
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji("➕");
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("🎮");
 
-      // Créer le bouton de quitte
       const leaveButton = new ButtonBuilder()
         .setCustomId("leave_queue")
         .setLabel("Quitter la Queue")
         .setStyle(ButtonStyle.Danger)
-        .setEmoji("➖");
+        .setEmoji("🚪");
 
-      const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
+      const buttonRow = new ActionRowBuilder().addComponents(
+        joinButton,
+        leaveButton
+      );
 
-      // Envoyer ou mettre à jour l'embed
+      // Supprimer l'ancien message s'il existe
       if (this.queueMessage) {
-        await this.queueMessage.edit({ embeds: [embed], components: [row] });
-      } else {
-        this.queueMessage = await channel.send({
-          embeds: [embed],
-          components: [row],
-        });
+        try {
+          await this.queueMessage.delete();
+        } catch (error) {
+          Logger.info("[CUSTOM_GAME] Ancien message de queue introuvable");
+        }
+      }
+
+      // Envoyer le nouveau message
+      this.queueMessage = await channel.send({
+        embeds: [embed],
+        components: [buttonRow],
+      });
+
+      // Mettre à jour le Rich Presence avec le nombre de joueurs
+      if (channel.client && channel.client.updateRichPresenceForQueue) {
+        channel.client.updateRichPresenceForQueue(completePlayers.length, 10);
       }
     } catch (error) {
-      Logger.error(`[CUSTOM_GAME] Erreur update embed: ${error.message}`);
+      Logger.error(`[CUSTOM_GAME] Erreur mise à jour embed: ${error.message}`);
     }
   }
 

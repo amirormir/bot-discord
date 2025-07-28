@@ -3,6 +3,7 @@ import { Logger } from "../utils/logger.js";
 import { CONFIG } from "../config/config.js";
 import { MessageHandler } from "../handlers/messageHandler.js";
 import { MessageTemplateHandler } from "../handlers/messageTemplateHandler.js";
+import { RichPresenceService } from "./richPresence.js";
 
 export class DiscordBot {
   constructor() {
@@ -16,6 +17,7 @@ export class DiscordBot {
 
     this.messageHandler = new MessageHandler();
     this.messageTemplateHandler = new MessageTemplateHandler();
+    this.richPresence = new RichPresenceService();
     this.setupEventHandlers();
   }
 
@@ -97,6 +99,9 @@ export class DiscordBot {
     try {
       await this.client.login(CONFIG.DISCORD_TOKEN);
       Logger.success("Bot Discord démarré avec succès");
+
+      // Initialiser le Rich Presence
+      await this.richPresence.initialize();
     } catch (error) {
       Logger.error(`Erreur lors du démarrage du bot: ${error.message}`);
       process.exit(1);
@@ -105,10 +110,31 @@ export class DiscordBot {
 
   async stop() {
     try {
+      // Détruire le Rich Presence
+      await this.richPresence.destroy();
+
+      // Déconnecter le client Discord
       await this.client.destroy();
-      Logger.info("Bot Discord arrêté");
+      Logger.success("Bot Discord arrêté avec succès");
     } catch (error) {
       Logger.error(`Erreur lors de l'arrêt du bot: ${error.message}`);
     }
+  }
+
+  // Méthodes pour mettre à jour le Rich Presence
+  updateRichPresenceForQueue(playerCount = 0, maxPlayers = 10) {
+    this.richPresence.updateGameStatus("Queue 5v5", playerCount, maxPlayers);
+  }
+
+  updateRichPresenceForGame() {
+    this.richPresence.updateGameStatus("Partie 5v5", 10, 10);
+  }
+
+  updateRichPresenceForIdle() {
+    this.richPresence.updatePresence();
+  }
+
+  clearRichPresence() {
+    this.richPresence.clearPresence();
   }
 }
