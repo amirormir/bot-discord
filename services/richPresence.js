@@ -41,16 +41,28 @@ export class RichPresenceService {
         this.isConnected = false;
       });
 
+      // Gestion des erreurs de connexion
+      this.rpc.on("error", (error) => {
+        Logger.error(`[RICH_PRESENCE] Erreur RPC: ${error.message}`);
+        this.isConnected = false;
+      });
+
       await this.rpc.login({ clientId: this.clientId });
     } catch (error) {
       Logger.error(`[RICH_PRESENCE] Erreur initialisation: ${error.message}`);
+      Logger.info(
+        "[RICH_PRESENCE] Le Rich Presence ne fonctionne que si Discord Desktop est ouvert"
+      );
+      Logger.info(
+        "[RICH_PRESENCE] Le bot continuera de fonctionner normalement sans Rich Presence"
+      );
+      this.isConnected = false;
     }
   }
 
   updatePresence() {
     if (!this.rpc || !this.isConnected) {
-      Logger.warning("[RICH_PRESENCE] Rich Presence non connecté");
-      return;
+      return; // Sortie silencieuse si pas connecté
     }
 
     try {
@@ -81,7 +93,7 @@ export class RichPresenceService {
 
   updateGameStatus(gameType = "Inhouse", playerCount = 0, maxPlayers = 10) {
     if (!this.rpc || !this.isConnected) {
-      return;
+      return; // Sortie silencieuse si pas connecté
     }
 
     try {
@@ -113,7 +125,7 @@ export class RichPresenceService {
 
   clearPresence() {
     if (!this.rpc || !this.isConnected) {
-      return;
+      return; // Sortie silencieuse si pas connecté
     }
 
     try {
