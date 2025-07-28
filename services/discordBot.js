@@ -81,6 +81,12 @@ export class DiscordBot {
           });
           this.messageHandler.customGameHandler.currentGameResult = null;
         }
+        // Gestion des boutons de pagination du classement
+        if (interaction.customId.startsWith("leaderboard_")) {
+          await this.messageHandler.customGameHandler.handleLeaderboardNavigation(
+            interaction
+          );
+        }
       }
     } catch (error) {
       Logger.error(`Erreur interaction: ${error.message}`);

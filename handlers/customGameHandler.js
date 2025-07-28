@@ -1144,11 +1144,40 @@ export class CustomGameHandler {
     }
   }
 
-  async showLeaderboard(message) {
+  async resetLeaderboard(message) {
     try {
-      const playerStats = await PlayerStats.find({})
-        .sort({ wins: -1, totalGames: -1 })
-        .limit(20);
+      // Vérifier que l'utilisateur est admin
+      if (!message.member.permissions.has("Administrator")) {
+        await message.reply(
+          "❌ Seuls les administrateurs peuvent réinitialiser le classement."
+        );
+        return;
+      }
+
+      // Supprimer toutes les stats
+      const result = await PlayerStats.deleteMany({});
+
+      Logger.info(
+        `[CUSTOM_GAME] Classement réinitialisé par ${message.author.tag} - ${result.deletedCount} joueurs supprimés`
+      );
+
+      await message.reply(
+        `✅ Classement réinitialisé ! ${result.deletedCount} joueurs supprimés du classement.`
+      );
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur reset classement: ${error.message}`);
+      await message.reply(
+        "❌ Erreur lors de la réinitialisation du classement."
+      );
+    }
+  }
+
+  async showLeaderboard(message, page = 0) {
+    try {
+      const playerStats = await PlayerStats.find({}).sort({
+        wins: -1,
+        totalGames: -1,
+      });
 
       Logger.info(
         `[CUSTOM_GAME] Affichage classement - ${playerStats.length} joueurs trouvés`
@@ -1159,21 +1188,38 @@ export class CustomGameHandler {
         return;
       }
 
+      // Pagination : 5 joueurs par page
+      const playersPerPage = 5;
+      const totalPages = Math.ceil(playerStats.length / playersPerPage);
+      const startIndex = page * playersPerPage;
+      const endIndex = startIndex + playersPerPage;
+      const currentPagePlayers = playerStats.slice(startIndex, endIndex);
+
       const leaderboardEmbed = new EmbedBuilder()
         .setTitle("🏆 Classement 5v5 Custom")
-        .setDescription("Top 20 des joueurs par nombre de victoires")
+        .setDescription(
+          `Top ${playerStats.length} des joueurs par nombre de victoires`
+        )
         .setColor("#ffd700")
+        .setFooter({
+          text: `Page ${page + 1}/${totalPages} • ${
+            playerStats.length
+          } joueurs total`,
+        })
         .setTimestamp();
 
-      // Diviser le classement en plusieurs champs si nécessaire
-      const maxFieldLength = 1024;
-      let currentFieldText = "";
-      let fieldCount = 0;
-
-      for (let i = 0; i < playerStats.length; i++) {
-        const stats = playerStats[i];
+      let leaderboardText = "";
+      for (let i = 0; i < currentPagePlayers.length; i++) {
+        const stats = currentPagePlayers[i];
+        const globalIndex = startIndex + i;
         const medal =
-          i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+          globalIndex === 0
+            ? "🥇"
+            : globalIndex === 1
+            ? "🥈"
+            : globalIndex === 2
+            ? "🥉"
+            : `**${globalIndex + 1}.**`;
 
         // Calculer le winrate manuellement
         const winrate =
@@ -1181,59 +1227,81 @@ export class CustomGameHandler {
             ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
             : "0.0";
 
-        const playerEntry = `${medal} **${stats.username}**\n   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
+        leaderboardText += `${medal} **${stats.username}**\n`;
+        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
 
-        // Vérifier si on peut ajouter les détails de coût
-        let detailedEntry = playerEntry;
         if (stats.totalGames > 0) {
-          const costDetails = `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
+          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
             2
-          )}\n   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
+          )}\n`;
+          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
             2
-          )}\n\n`;
-
-          // Vérifier si l'ajout des détails dépasserait la limite
-          if (
-            (currentFieldText + detailedEntry + costDetails).length <=
-            maxFieldLength
-          ) {
-            detailedEntry += costDetails;
-          } else {
-            detailedEntry += "\n";
-          }
-        } else {
-          detailedEntry += "\n";
+          )}\n`;
         }
-
-        // Vérifier si on doit créer un nouveau champ
-        if ((currentFieldText + detailedEntry).length > maxFieldLength) {
-          // Ajouter le champ actuel
-          if (currentFieldText.trim()) {
-            leaderboardEmbed.addFields({
-              name: fieldCount === 0 ? "Classement" : `Classement (suite)`,
-              value: currentFieldText.trim(),
-              inline: false,
-            });
-            fieldCount++;
-          }
-          // Commencer un nouveau champ
-          currentFieldText = detailedEntry;
-        } else {
-          currentFieldText += detailedEntry;
-        }
+        leaderboardText += "\n";
       }
 
-      // Ajouter le dernier champ s'il y a du contenu
-      if (currentFieldText.trim()) {
-        leaderboardEmbed.addFields({
-          name: fieldCount === 0 ? "Classement" : `Classement (suite)`,
-          value: currentFieldText.trim(),
-          inline: false,
-        });
+      leaderboardEmbed.addFields({
+        name: `Classement (${startIndex + 1}-${Math.min(
+          endIndex,
+          playerStats.length
+        )})`,
+        value: leaderboardText.trim(),
+        inline: false,
+      });
+
+      // Créer les boutons de navigation
+      const buttons = [];
+
+      // Bouton "Précédent"
+      if (page > 0) {
+        const prevButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_prev_${page}`)
+          .setLabel("◀️ Précédent")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(prevButton);
       }
 
-      await message.reply({ embeds: [leaderboardEmbed] });
-      Logger.info(`[CUSTOM_GAME] Classement affiché par ${message.author.tag}`);
+      // Bouton "Suivant"
+      if (page < totalPages - 1) {
+        const nextButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_next_${page}`)
+          .setLabel("Suivant ▶️")
+          .setStyle(ButtonStyle.Primary);
+        buttons.push(nextButton);
+      }
+
+      // Bouton "Première page"
+      if (page > 0) {
+        const firstButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_first`)
+          .setLabel("🏠 Première")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(firstButton);
+      }
+
+      // Bouton "Dernière page"
+      if (page < totalPages - 1) {
+        const lastButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_last_${totalPages - 1}`)
+          .setLabel("🏁 Dernière")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(lastButton);
+      }
+
+      const row = new ActionRowBuilder().addComponents(buttons);
+
+      const replyOptions = { embeds: [leaderboardEmbed] };
+      if (buttons.length > 0) {
+        replyOptions.components = [row];
+      }
+
+      await message.reply(replyOptions);
+      Logger.info(
+        `[CUSTOM_GAME] Classement affiché par ${message.author.tag} (page ${
+          page + 1
+        }/${totalPages})`
+      );
     } catch (error) {
       Logger.error(
         `[CUSTOM_GAME] Erreur affichage classement: ${error.message}`
@@ -1323,6 +1391,190 @@ export class CustomGameHandler {
         `[CUSTOM_GAME] Erreur affichage stats joueur: ${error.message}`
       );
       await message.reply("❌ Erreur lors de l'affichage des statistiques.");
+    }
+  }
+
+  async handleLeaderboardNavigation(interaction) {
+    try {
+      const customId = interaction.customId;
+      let targetPage = 0;
+
+      if (customId === "leaderboard_first") {
+        targetPage = 0;
+      } else if (customId.startsWith("leaderboard_prev_")) {
+        targetPage = parseInt(customId.split("_")[2]) - 1;
+      } else if (customId.startsWith("leaderboard_next_")) {
+        targetPage = parseInt(customId.split("_")[2]) + 1;
+      } else if (customId.startsWith("leaderboard_last_")) {
+        targetPage = parseInt(customId.split("_")[2]);
+      }
+
+      // Vérifier que la page est valide
+      const playerStats = await PlayerStats.find({}).sort({
+        wins: -1,
+        totalGames: -1,
+      });
+      const totalPages = Math.ceil(playerStats.length / 5);
+
+      if (targetPage < 0 || targetPage >= totalPages) {
+        await interaction.reply({
+          content: "❌ Page invalide.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Mettre à jour le message avec la nouvelle page
+      await this.showLeaderboardPage(interaction, targetPage);
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur navigation classement: ${error.message}`
+      );
+      await interaction.reply({
+        content: "❌ Erreur lors de la navigation.",
+        ephemeral: true,
+      });
+    }
+  }
+
+  async showLeaderboardPage(interaction, page) {
+    try {
+      const playerStats = await PlayerStats.find({}).sort({
+        wins: -1,
+        totalGames: -1,
+      });
+
+      if (playerStats.length === 0) {
+        await interaction.update({
+          content: "📊 Aucune statistique disponible pour le moment.",
+          embeds: [],
+          components: [],
+        });
+        return;
+      }
+
+      // Pagination : 5 joueurs par page
+      const playersPerPage = 5;
+      const totalPages = Math.ceil(playerStats.length / playersPerPage);
+      const startIndex = page * playersPerPage;
+      const endIndex = startIndex + playersPerPage;
+      const currentPagePlayers = playerStats.slice(startIndex, endIndex);
+
+      const leaderboardEmbed = new EmbedBuilder()
+        .setTitle("🏆 Classement 5v5 Custom")
+        .setDescription(
+          `Top ${playerStats.length} des joueurs par nombre de victoires`
+        )
+        .setColor("#ffd700")
+        .setFooter({
+          text: `Page ${page + 1}/${totalPages} • ${
+            playerStats.length
+          } joueurs total`,
+        })
+        .setTimestamp();
+
+      let leaderboardText = "";
+      for (let i = 0; i < currentPagePlayers.length; i++) {
+        const stats = currentPagePlayers[i];
+        const globalIndex = startIndex + i;
+        const medal =
+          globalIndex === 0
+            ? "🥇"
+            : globalIndex === 1
+            ? "🥈"
+            : globalIndex === 2
+            ? "🥉"
+            : `**${globalIndex + 1}.**`;
+
+        // Calculer le winrate manuellement
+        const winrate =
+          stats.totalGames > 0
+            ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
+            : "0.0";
+
+        leaderboardText += `${medal} **${stats.username}**\n`;
+        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
+
+        if (stats.totalGames > 0) {
+          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
+            2
+          )}\n`;
+          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
+            2
+          )}\n`;
+        }
+        leaderboardText += "\n";
+      }
+
+      leaderboardEmbed.addFields({
+        name: `Classement (${startIndex + 1}-${Math.min(
+          endIndex,
+          playerStats.length
+        )})`,
+        value: leaderboardText.trim(),
+        inline: false,
+      });
+
+      // Créer les boutons de navigation
+      const buttons = [];
+
+      // Bouton "Précédent"
+      if (page > 0) {
+        const prevButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_prev_${page}`)
+          .setLabel("◀️ Précédent")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(prevButton);
+      }
+
+      // Bouton "Suivant"
+      if (page < totalPages - 1) {
+        const nextButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_next_${page}`)
+          .setLabel("Suivant ▶️")
+          .setStyle(ButtonStyle.Primary);
+        buttons.push(nextButton);
+      }
+
+      // Bouton "Première page"
+      if (page > 0) {
+        const firstButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_first`)
+          .setLabel("🏠 Première")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(firstButton);
+      }
+
+      // Bouton "Dernière page"
+      if (page < totalPages - 1) {
+        const lastButton = new ButtonBuilder()
+          .setCustomId(`leaderboard_last_${totalPages - 1}`)
+          .setLabel("🏁 Dernière")
+          .setStyle(ButtonStyle.Secondary);
+        buttons.push(lastButton);
+      }
+
+      const row = new ActionRowBuilder().addComponents(buttons);
+
+      const updateOptions = { embeds: [leaderboardEmbed] };
+      if (buttons.length > 0) {
+        updateOptions.components = [row];
+      }
+
+      await interaction.update(updateOptions);
+      Logger.info(
+        `[CUSTOM_GAME] Classement mis à jour vers page ${
+          page + 1
+        }/${totalPages}`
+      );
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur mise à jour classement: ${error.message}`
+      );
+      await interaction.reply({
+        content: "❌ Erreur lors de la mise à jour du classement.",
+        ephemeral: true,
+      });
     }
   }
 }
