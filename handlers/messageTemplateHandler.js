@@ -184,8 +184,15 @@ export class MessageTemplateHandler {
         channels
       );
 
+      // Tronquer le contenu pour éviter de dépasser la limite de 2000 caractères
+      const maxContentLength = 1500; // Réserver de l'espace pour le reste du message
+      const truncatedContent =
+        template.content.length > maxContentLength
+          ? template.content.substring(0, maxContentLength) + "..."
+          : template.content;
+
       await interaction.update({
-        content: `Template sélectionné : **${template.name}**\n\nContenu : ${template.content}\n\nChoisissez le channel de destination :`,
+        content: `Template sélectionné : **${template.name}**\n\nContenu : ${truncatedContent}\n\nChoisissez le channel de destination :`,
         components: [row],
       });
     } catch (error) {
