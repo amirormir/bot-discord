@@ -11,6 +11,13 @@ export class GlobalResponseHandler {
       "qui lui dit ?",
       "@https://tenor.com/fr/view/benzema-karim-benzema-arrete-arrête-arrete-arrete-arrete-gif-5404649638740761265",
     ];
+    this.ratioResponses = [
+      "ratio",
+      "pleure",
+      "a quoi bon tout ces mots si tu prends perpet",
+      "y que fue",
+      "va la bas p diddy",
+    ];
     this.blessedUsers = [
       "277825453580877824",
       "700466241265205368",
@@ -40,10 +47,45 @@ export class GlobalResponseHandler {
     return Math.random() < 0.05;
   }
 
+  shouldRespondWithRatio() {
+    // 20% de chance que la réponse globale soit un ratio (donc 1% de chance totale)
+    return Math.random() < 0.2;
+  }
+
   getRandomGlobalResponse() {
     return this.globalResponses[
       Math.floor(Math.random() * this.globalResponses.length)
     ];
+  }
+
+  getRandomRatioResponse() {
+    return this.ratioResponses[
+      Math.floor(Math.random() * this.ratioResponses.length)
+    ];
+  }
+
+  async timeoutUser(message, duration = 60) {
+    try {
+      const member = message.member;
+      if (!member) {
+        Logger.error(
+          `[GLOBAL] Impossible de timeout l'utilisateur: membre non trouvé`
+        );
+        return false;
+      }
+
+      await member.timeout(
+        duration * 1000,
+        "Ratio - Réponse automatique du bot"
+      );
+      Logger.info(
+        `[GLOBAL] Utilisateur ${message.author.username} (${message.author.id}) timeout pour ${duration} secondes`
+      );
+      return true;
+    } catch (error) {
+      Logger.error(`[GLOBAL] Erreur timeout utilisateur: ${error.message}`);
+      return false;
+    }
   }
 
   async getAdcConfig() {
@@ -131,10 +173,29 @@ export class GlobalResponseHandler {
     if (!isBlessed) {
       // Réponse globale avec 5% de chance
       if (this.shouldRespondGlobally()) {
-        const response = this.getRandomGlobalResponse();
-        Logger.info(`[GLOBAL] Réponse globale: "${response}"`);
+        let response;
+        let isRatio = false;
+
+        // 20% de chance que ce soit un ratio (1% de chance totale)
+        if (this.shouldRespondWithRatio()) {
+          response = this.getRandomRatioResponse();
+          isRatio = true;
+          Logger.info(`[GLOBAL] Réponse ratio: "${response}"`);
+        } else {
+          response = this.getRandomGlobalResponse();
+          Logger.info(`[GLOBAL] Réponse globale: "${response}"`);
+        }
+
         try {
           await message.reply(response);
+
+          // Si c'est un ratio, timeout l'utilisateur
+          if (isRatio) {
+            const timeoutSuccess = await this.timeoutUser(message, 60);
+            if (timeoutSuccess) {
+              Logger.info(`[GLOBAL] Timeout appliqué après ratio`);
+            }
+          }
         } catch (err) {
           Logger.error(`[GLOBAL] Erreur réponse globale: ${err.message}`);
         }

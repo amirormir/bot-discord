@@ -113,6 +113,10 @@ export class MessageHandler {
       await this.customGameHandler.showLeaderboard(message);
       return;
     }
+    if (message.content === "!resetclassement") {
+      await this.customGameHandler.resetLeaderboard(message);
+      return;
+    }
     if (message.content.startsWith("!stats ")) {
       const userId = message.content.split(" ")[1];
       if (!userId) {
@@ -204,6 +208,7 @@ export class MessageHandler {
             value: [
               "`!classement` - Afficher le classement des joueurs",
               "`!stats <@user>` - Afficher les stats détaillées d'un joueur",
+              "`!resetclassement` - Réinitialiser le classement (Admin)",
             ].join("\n"),
             inline: false,
           },
