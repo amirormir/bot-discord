@@ -85,7 +85,8 @@ export class EloIntegration {
           role: player.assignedRole,
         })),
       },
-      winner: winner === "team1" ? "team1" : "team2",
+      winner:
+        winner === "team1" ? "team1" : winner === "team2" ? "team2" : winner,
       duration: gameResult.duration || null,
       victoryMargin: gameResult.victoryMargin || null,
     };

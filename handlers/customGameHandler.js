@@ -1005,6 +1005,9 @@ export class CustomGameHandler {
       const loserTeam =
         this.currentGameResult[winner === "team1" ? "team2" : "team1"];
 
+      // Ajouter le winner au currentGameResult pour le système Elo
+      this.currentGameResult.winner = winner;
+
       Logger.info(
         `[CUSTOM_GAME] Déclaration de victoire par ${interaction.user.tag} - Gagnant: ${winner}`
       );
