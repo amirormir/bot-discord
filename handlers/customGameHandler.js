@@ -4,6 +4,7 @@ import { Queue } from "../models/Queue.js";
 import { PlayerStats } from "../models/PlayerStats.js";
 import { GameResult } from "../models/GameResult.js";
 import { TeamBuilder } from "../utils/teamBuilder.js";
+import { EloIntegration } from "../integration/eloIntegration.js";
 import {
   EmbedBuilder,
   ActionRowBuilder,
@@ -19,6 +20,7 @@ export class CustomGameHandler {
     this.costSelectionTimeouts = new Map();
     this.queueMessage = null; // Ajout de cette propriété
     this.currentGameResult = null; // Stocke le résultat de la partie en cours
+    this.eloIntegration = new EloIntegration(); // Intégration du système Elo
   }
 
   async getOrCreateQueue() {
@@ -86,6 +88,19 @@ export class CustomGameHandler {
           ephemeral: true,
         });
         return;
+      }
+
+      // Récupérer ou créer les statistiques du joueur pour obtenir son Elo
+      let playerStats = await PlayerStats.findOne({
+        userId: interaction.user.id,
+      });
+      if (!playerStats) {
+        playerStats = await PlayerStats.create({
+          userId: interaction.user.id,
+          username: interaction.user.username,
+          elo: 1000,
+          gamesPlayed: 0,
+        });
       }
 
       // Créer le joueur avec des valeurs temporaires
@@ -694,17 +709,19 @@ export class CustomGameHandler {
         .setColor(queue.isActive ? "#00ff00" : "#ff0000")
         .setTimestamp();
 
-      // Ajouter les joueurs complets
+      // Ajouter les joueurs complets avec leur Elo
       if (completePlayers.length > 0) {
-        const completeList = completePlayers
-          .map(
-            (p) =>
-              `• ${p.username} (${p.selectedRole} - Niveau ${p.selectedCost})`
-          )
-          .join("\n");
+        const completeList = await Promise.all(
+          completePlayers.map(async (p) => {
+            const playerStats = await PlayerStats.findOne({ userId: p.userId });
+            const elo = playerStats ? playerStats.elo : 1000;
+            return `• ${p.username} (${p.selectedRole} - Niveau ${p.selectedCost}) - Elo: ${elo}`;
+          })
+        );
+
         embed.addFields({
           name: "✅ Joueurs complets",
-          value: completeList,
+          value: completeList.join("\n"),
           inline: false,
         });
       }
@@ -999,9 +1016,24 @@ export class CustomGameHandler {
         `[CUSTOM_GAME] Résultat sauvegardé avec ID: ${gameResult.gameId}`
       );
 
-      // Mettre à jour les statistiques des joueurs
+      // Mettre à jour les statistiques des joueurs (ancien système)
       await this.updatePlayerStats(winnerTeam, loserTeam, true);
       await this.updatePlayerStats(loserTeam, winnerTeam, false);
+
+      // Intégrer le système Elo
+      try {
+        const eloResult = await this.eloIntegration.resolveMatchWithElo(
+          this.currentGameResult,
+          interaction.user.id
+        );
+
+        // Afficher les changements d'Elo dans l'embed
+        const eloEmbed = this.createEloResultEmbed(eloResult);
+        await interaction.followUp({ embeds: [eloEmbed] });
+      } catch (error) {
+        Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
+        // Continuer sans le système Elo si erreur
+      }
 
       // Créer l'embed de résultat
       const resultEmbed = new EmbedBuilder()
@@ -1053,6 +1085,28 @@ export class CustomGameHandler {
         ephemeral: true,
       });
     }
+  }
+
+  createEloResultEmbed(eloResult) {
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 Changements d'Elo")
+      .setColor("#ffd700")
+      .setTimestamp();
+
+    // Ajouter les changements pour chaque joueur
+    Object.values(eloResult.updatedPlayers).forEach((player) => {
+      const changeText =
+        player.change > 0 ? `+${player.change}` : `${player.change}`;
+      const emoji = player.result === "win" ? "🟢" : "🔴";
+
+      embed.addFields({
+        name: `${emoji} ${player.username}`,
+        value: `${player.oldElo} → ${player.newElo} (${changeText})`,
+        inline: true,
+      });
+    });
+
+    return embed;
   }
 
   async updatePlayerStats(team, opponentTeam, isWin) {
@@ -1188,8 +1242,8 @@ export class CustomGameHandler {
   async showLeaderboard(message, page = 0) {
     try {
       const playerStats = await PlayerStats.find({}).sort({
-        wins: -1,
-        totalGames: -1,
+        elo: -1,
+        gamesPlayed: -1,
       });
 
       Logger.info(
@@ -1210,9 +1264,7 @@ export class CustomGameHandler {
 
       const leaderboardEmbed = new EmbedBuilder()
         .setTitle("🏆 Classement 5v5 Custom")
-        .setDescription(
-          `Top ${playerStats.length} des joueurs par nombre de victoires`
-        )
+        .setDescription(`Top ${playerStats.length} des joueurs par Elo`)
         .setColor("#ffd700")
         .setFooter({
           text: `Page ${page + 1}/${totalPages} • ${
@@ -1241,6 +1293,7 @@ export class CustomGameHandler {
             : "0.0";
 
         leaderboardText += `${medal} **${stats.username}**\n`;
+        leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
         leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
 
         if (stats.totalGames > 0) {
@@ -1453,8 +1506,8 @@ export class CustomGameHandler {
   async showLeaderboardPage(interaction, page) {
     try {
       const playerStats = await PlayerStats.find({}).sort({
-        wins: -1,
-        totalGames: -1,
+        elo: -1,
+        gamesPlayed: -1,
       });
 
       if (playerStats.length === 0) {
@@ -1475,9 +1528,7 @@ export class CustomGameHandler {
 
       const leaderboardEmbed = new EmbedBuilder()
         .setTitle("🏆 Classement 5v5 Custom")
-        .setDescription(
-          `Top ${playerStats.length} des joueurs par nombre de victoires`
-        )
+        .setDescription(`Top ${playerStats.length} des joueurs par Elo`)
         .setColor("#ffd700")
         .setFooter({
           text: `Page ${page + 1}/${totalPages} • ${
@@ -1506,6 +1557,7 @@ export class CustomGameHandler {
             : "0.0";
 
         leaderboardText += `${medal} **${stats.username}**\n`;
+        leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
         leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
 
         if (stats.totalGames > 0) {
