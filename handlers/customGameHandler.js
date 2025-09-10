@@ -1037,39 +1037,6 @@ export class CustomGameHandler {
       await this.updatePlayerStats(winnerTeam, loserTeam, true);
       await this.updatePlayerStats(loserTeam, winnerTeam, false);
 
-      // Intégrer le système Elo
-      try {
-        Logger.info(`[CUSTOM_GAME] Début résolution Elo pour match: ${winner}`);
-        Logger.info(
-          `[CUSTOM_GAME] Données du match:`,
-          JSON.stringify(this.currentGameResult, null, 2)
-        );
-
-        const eloResult = await this.eloIntegration.resolveMatchWithElo(
-          this.currentGameResult,
-          interaction.user.id
-        );
-
-        Logger.info(
-          `[CUSTOM_GAME] Résultat Elo reçu:`,
-          JSON.stringify(eloResult, null, 2)
-        );
-
-        // Afficher les changements d'Elo dans l'embed
-        const eloEmbed = this.createEloResultEmbed(eloResult);
-        Logger.info(`[CUSTOM_GAME] Envoi embed changements Elo`);
-        await interaction.followUp({ embeds: [eloEmbed] });
-      } catch (error) {
-        Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
-        Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
-
-        // Envoyer un message d'erreur pour debug
-        await interaction.followUp({
-          content: `❌ Erreur système Elo: ${error.message}`,
-          ephemeral: true,
-        });
-      }
-
       // Créer l'embed de résultat
       const resultEmbed = new EmbedBuilder()
         .setTitle("🏆 Résultat de la Partie")
@@ -1106,6 +1073,39 @@ export class CustomGameHandler {
         content: "✅ Résultat enregistré !",
         embeds: [resultEmbed],
       });
+
+      // Intégrer le système Elo APRÈS la réponse de l'interaction
+      try {
+        Logger.info(`[CUSTOM_GAME] Début résolution Elo pour match: ${winner}`);
+        Logger.info(
+          `[CUSTOM_GAME] Données du match:`,
+          JSON.stringify(this.currentGameResult, null, 2)
+        );
+
+        const eloResult = await this.eloIntegration.resolveMatchWithElo(
+          this.currentGameResult,
+          interaction.user.id
+        );
+
+        Logger.info(
+          `[CUSTOM_GAME] Résultat Elo reçu:`,
+          JSON.stringify(eloResult, null, 2)
+        );
+
+        // Afficher les changements d'Elo dans l'embed
+        const eloEmbed = this.createEloResultEmbed(eloResult);
+        Logger.info(`[CUSTOM_GAME] Envoi embed changements Elo`);
+        await interaction.followUp({ embeds: [eloEmbed] });
+      } catch (error) {
+        Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
+        Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+
+        // Envoyer un message d'erreur pour debug
+        await interaction.followUp({
+          content: `❌ Erreur système Elo: ${error.message}`,
+          ephemeral: true,
+        });
+      }
 
       // Réinitialiser le résultat de la partie en cours
       this.currentGameResult = null;
