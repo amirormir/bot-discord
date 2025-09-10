@@ -238,7 +238,7 @@ export class MessageHandler {
     }
 
     // Commande pour lister toutes les commandes
-    if (message.content === "!help") {
+    if (message.content === "!loli") {
       const helpEmbed = new EmbedBuilder()
         .setTitle("🤖 Commandes du Bot")
         .setColor("#00ff00")
@@ -294,7 +294,7 @@ export class MessageHandler {
             name: "🎯 Autres commandes",
             value: [
               "`!bazouzou` - Envoyer un bazouzou aléatoire",
-              "`!help` - Afficher cette aide",
+              "`!loli` - Afficher cette aide",
             ].join("\n"),
             inline: false,
           }

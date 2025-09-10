@@ -10,6 +10,17 @@ const playerStatsSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  // Système Elo
+  elo: {
+    type: Number,
+    default: 1000, // Elo de départ
+    min: 0,
+  },
+  gamesPlayed: {
+    type: Number,
+    default: 0,
+  },
+  // Statistiques classiques (conservées pour compatibilité)
   wins: {
     type: Number,
     default: 0,
@@ -44,6 +55,15 @@ const playerStatsSchema = new mongoose.Schema({
     of: Number,
     default: new Map(),
   },
+  // Historique Elo pour tracking
+  eloHistory: [
+    {
+      elo: Number,
+      change: Number,
+      matchId: String,
+      date: { type: Date, default: Date.now },
+    },
+  ],
   lastUpdated: {
     type: Date,
     default: Date.now,
