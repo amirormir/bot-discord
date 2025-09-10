@@ -1039,17 +1039,35 @@ export class CustomGameHandler {
 
       // Intégrer le système Elo
       try {
+        Logger.info(`[CUSTOM_GAME] Début résolution Elo pour match: ${winner}`);
+        Logger.info(
+          `[CUSTOM_GAME] Données du match:`,
+          JSON.stringify(this.currentGameResult, null, 2)
+        );
+
         const eloResult = await this.eloIntegration.resolveMatchWithElo(
           this.currentGameResult,
           interaction.user.id
         );
 
+        Logger.info(
+          `[CUSTOM_GAME] Résultat Elo reçu:`,
+          JSON.stringify(eloResult, null, 2)
+        );
+
         // Afficher les changements d'Elo dans l'embed
         const eloEmbed = this.createEloResultEmbed(eloResult);
+        Logger.info(`[CUSTOM_GAME] Envoi embed changements Elo`);
         await interaction.followUp({ embeds: [eloEmbed] });
       } catch (error) {
         Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
-        // Continuer sans le système Elo si erreur
+        Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+
+        // Envoyer un message d'erreur pour debug
+        await interaction.followUp({
+          content: `❌ Erreur système Elo: ${error.message}`,
+          ephemeral: true,
+        });
       }
 
       // Créer l'embed de résultat
