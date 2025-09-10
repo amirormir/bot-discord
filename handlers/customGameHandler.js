@@ -492,6 +492,23 @@ export class CustomGameHandler {
         .setTimestamp();
 
       // Créer un embed détaillé avec tous les choix
+      // Récupérer les Elo des joueurs pour l'affichage
+      const team1WithElo = await Promise.all(
+        result.team1.map(async (p) => {
+          const playerStats = await PlayerStats.findOne({ userId: p.userId });
+          const elo = playerStats ? playerStats.elo : 1000;
+          return { ...p, elo };
+        })
+      );
+
+      const team2WithElo = await Promise.all(
+        result.team2.map(async (p) => {
+          const playerStats = await PlayerStats.findOne({ userId: p.userId });
+          const elo = playerStats ? playerStats.elo : 1000;
+          return { ...p, elo };
+        })
+      );
+
       const detailsEmbed = new EmbedBuilder()
         .setTitle("📋 Détails des Choix")
         .setDescription("Rôles demandés vs rôles assignés")
@@ -499,20 +516,20 @@ export class CustomGameHandler {
         .addFields(
           {
             name: "🔵 Équipe 1",
-            value: result.team1
+            value: team1WithElo
               .map(
                 (p) =>
-                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost})`
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - Elo ${p.elo})`
               )
               .join("\n"),
             inline: false,
           },
           {
             name: "🔴 Équipe 2",
-            value: result.team2
+            value: team2WithElo
               .map(
                 (p) =>
-                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost})`
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - Elo ${p.elo})`
               )
               .join("\n"),
             inline: false,
@@ -548,7 +565,7 @@ export class CustomGameHandler {
         content: `<@${result.team1
           .map((p) => p.userId)
           .join("> <@")}> <@${result.team2.map((p) => p.userId).join("> <@")}>`,
-        embeds: [summaryEmbed, team1Embed, team2Embed, detailsEmbed],
+        embeds: [detailsEmbed],
         components: [buttonRow],
       });
 
@@ -1295,15 +1312,6 @@ export class CustomGameHandler {
         leaderboardText += `${medal} **${stats.username}**\n`;
         leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
         leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
-
-        if (stats.totalGames > 0) {
-          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
-            2
-          )}\n`;
-          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
-            2
-          )}\n`;
-        }
         leaderboardText += "\n";
       }
 
@@ -1559,15 +1567,6 @@ export class CustomGameHandler {
         leaderboardText += `${medal} **${stats.username}**\n`;
         leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
         leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
-
-        if (stats.totalGames > 0) {
-          leaderboardText += `   🎯 Victoires: cost adv. ${stats.avgOpponentCostWhenWin.toFixed(
-            2
-          )}\n`;
-          leaderboardText += `   💀 Défaites: cost adv. ${stats.avgOpponentCostWhenLose.toFixed(
-            2
-          )}\n`;
-        }
         leaderboardText += "\n";
       }
 
