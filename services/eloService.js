@@ -252,9 +252,14 @@ export class EloService {
       },
     };
 
+    Logger.info(`[ELO_SERVICE] Winner: ${winner}`);
+
     // Traiter l'équipe 1
     team1.players.forEach((player) => {
       const result = winner === "team1" ? "win" : "loss";
+      Logger.info(
+        `[ELO_SERVICE] Team1 - ${player.username}: result=${result} (winner=${winner})`
+      );
       const eloChange = this.calculateEloChange(
         { ...player, teamId: 1 },
         result,
@@ -272,6 +277,9 @@ export class EloService {
     // Traiter l'équipe 2
     team2.players.forEach((player) => {
       const result = winner === "team2" ? "win" : "loss";
+      Logger.info(
+        `[ELO_SERVICE] Team2 - ${player.username}: result=${result} (winner=${winner})`
+      );
       const eloChange = this.calculateEloChange(
         { ...player, teamId: 2 },
         result,

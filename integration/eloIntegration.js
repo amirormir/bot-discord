@@ -54,7 +54,19 @@ export class EloIntegration {
   convertGameResultToMatchData(gameResult) {
     const { team1, team2, winner } = gameResult;
 
-    return {
+    Logger.info(`[ELO_INTEGRATION] Conversion - Winner reçu: ${winner}`);
+    Logger.info(
+      `[ELO_INTEGRATION] Team1 players: ${team1.players
+        .map((p) => p.username)
+        .join(", ")}`
+    );
+    Logger.info(
+      `[ELO_INTEGRATION] Team2 players: ${team2.players
+        .map((p) => p.username)
+        .join(", ")}`
+    );
+
+    const matchData = {
       team1: {
         players: team1.players.map((player) => ({
           userId: player.userId,
@@ -77,6 +89,11 @@ export class EloIntegration {
       duration: gameResult.duration || null,
       victoryMargin: gameResult.victoryMargin || null,
     };
+
+    Logger.info(
+      `[ELO_INTEGRATION] Match data créé - Winner: ${matchData.winner}`
+    );
+    return matchData;
   }
 
   /**
