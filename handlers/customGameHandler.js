@@ -1110,18 +1110,45 @@ export class CustomGameHandler {
       .setColor("#ffd700")
       .setTimestamp();
 
-    // Ajouter les changements pour chaque joueur
-    Object.values(eloResult.updatedPlayers).forEach((player) => {
-      const changeText =
-        player.change > 0 ? `+${player.change}` : `${player.change}`;
-      const emoji = player.result === "win" ? "🟢" : "🔴";
+    // Séparer les gagnants et les perdants
+    const winners = Object.values(eloResult.updatedPlayers).filter(
+      (p) => p.result === "win"
+    );
+    const losers = Object.values(eloResult.updatedPlayers).filter(
+      (p) => p.result === "lose"
+    );
+
+    // Affichage des gagnants
+    if (winners.length > 0) {
+      const winnersText = winners
+        .map((player) => {
+          const changeText = `+${player.change}`;
+          return `🟢 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
+        })
+        .join("\n");
 
       embed.addFields({
-        name: `${emoji} ${player.username}`,
-        value: `${player.oldElo} → ${player.newElo} (${changeText})`,
-        inline: true,
+        name: "🟢 Gagnants",
+        value: winnersText,
+        inline: false,
       });
-    });
+    }
+
+    // Affichage des perdants
+    if (losers.length > 0) {
+      const losersText = losers
+        .map((player) => {
+          const changeText = `${player.change}`;
+          return `🔴 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
+        })
+        .join("\n");
+
+      embed.addFields({
+        name: "🔴 Perdants",
+        value: losersText,
+        inline: false,
+      });
+    }
 
     return embed;
   }
