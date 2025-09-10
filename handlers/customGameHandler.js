@@ -838,18 +838,18 @@ export class CustomGameHandler {
         return;
       }
 
-      // Créer 10 joueurs de test avec des rôles et niveaux variés
+      // Créer 10 joueurs de test avec des rôles et niveaux différents pour tester l'algorithme
       const testPlayers = [
-        { username: "TestPlayer1", selectedRole: "Top", selectedCost: 4 },
-        { username: "TestPlayer2", selectedRole: "Jungle", selectedCost: 3 },
-        { username: "TestPlayer3", selectedRole: "Mid", selectedCost: 5 },
-        { username: "TestPlayer4", selectedRole: "ADC", selectedCost: 2 },
-        { username: "TestPlayer5", selectedRole: "Support", selectedCost: 3 },
-        { username: "TestPlayer6", selectedRole: "Top", selectedCost: 4 },
-        { username: "TestPlayer7", selectedRole: "Jungle", selectedCost: 2 },
-        { username: "TestPlayer8", selectedRole: "Mid", selectedCost: 3 },
-        { username: "TestPlayer9", selectedRole: "Fill", selectedCost: 4 },
-        { username: "TestPlayer10", selectedRole: "Fill", selectedCost: 3 },
+        { username: "TestPlayer1", selectedRole: "Top", selectedCost: 1 },
+        { username: "TestPlayer2", selectedRole: "Jungle", selectedCost: 2 },
+        { username: "TestPlayer3", selectedRole: "Mid", selectedCost: 3 },
+        { username: "TestPlayer4", selectedRole: "ADC", selectedCost: 4 },
+        { username: "TestPlayer5", selectedRole: "Support", selectedCost: 5 },
+        { username: "TestPlayer6", selectedRole: "Top", selectedCost: 2 },
+        { username: "TestPlayer7", selectedRole: "Jungle", selectedCost: 3 },
+        { username: "TestPlayer8", selectedRole: "Mid", selectedCost: 4 },
+        { username: "TestPlayer9", selectedRole: "Fill", selectedCost: 1 },
+        { username: "TestPlayer10", selectedRole: "Fill", selectedCost: 5 },
       ];
 
       // Créer les joueurs dans la DB
