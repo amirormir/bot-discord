@@ -175,6 +175,11 @@ export class EloService {
         3
       )}, Bonus: ${personalBonus})`
     );
+    Logger.info(
+      `[ELO_SERVICE] Calcul détaillé: ${kFactor} * (${score} - ${playerExpected.toFixed(
+        3
+      )}) + ${personalBonus} = ${change.toFixed(1)}`
+    );
 
     return {
       change: Math.round(change),
@@ -210,6 +215,11 @@ export class EloService {
       )} | Team2: Elo ${team2AverageElo.toFixed(
         1
       )}, Cost ${team2AverageCost.toFixed(2)}`
+    );
+    Logger.info(
+      `[ELO_SERVICE] Différences - Elo: ${(
+        team1AverageElo - team2AverageElo
+      ).toFixed(1)}, Cost: ${(team1AverageCost - team2AverageCost).toFixed(2)}`
     );
 
     // Calculer les expected

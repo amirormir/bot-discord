@@ -609,33 +609,18 @@ export class CustomGameHandler {
       await Player.deleteMany({});
 
       this.currentQueue = null;
-      this.queueMessage = null; // Reset de l'embed
+      this.queueMessage = null;
       this.roleSelectionTimeouts.clear();
       this.costSelectionTimeouts.clear();
+      this.currentGameResult = null; // Reset du résultat de partie
 
-      await message.reply("✅ Queue 5v5 arrêtée et vidée.");
-      Logger.info(`[CUSTOM_GAME] Queue arrêtée par ${message.author.tag}`);
+      await message.reply("✅ Queue 5v5 arrêtée, vidée et reset complet.");
+      Logger.info(
+        `[CUSTOM_GAME] Queue arrêtée et reset par ${message.author.tag}`
+      );
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur arrêt queue: ${error.message}`);
       await message.reply("❌ Erreur lors de l'arrêt de la queue.");
-    }
-  }
-
-  async resetCustomGame(message) {
-    try {
-      await Player.deleteMany({});
-      const queue = await this.getOrCreateQueue();
-      queue.currentPhase = "waiting";
-      await queue.save();
-
-      // Mettre à jour l'embed
-      await this.updateQueueEmbed(message.channel, queue);
-
-      await message.reply("✅ Queue vidée et remise à zéro.");
-      Logger.info(`[CUSTOM_GAME] Queue reset par ${message.author.tag}`);
-    } catch (error) {
-      Logger.error(`[CUSTOM_GAME] Erreur reset queue: ${error.message}`);
-      await message.reply("❌ Erreur lors du reset de la queue.");
     }
   }
 
@@ -992,11 +977,16 @@ export class CustomGameHandler {
 
   async handleGameResult(interaction) {
     try {
-      // Vérifier que l'utilisateur est admin
-      if (!interaction.member.permissions.has("Administrator")) {
+      // Vérifier que l'utilisateur est admin ou a le rôle "arbitre"
+      const isAdmin = interaction.member.permissions.has("Administrator");
+      const hasArbitreRole = interaction.member.roles.cache.some(
+        (role) => role.name.toLowerCase() === "arbitre"
+      );
+
+      if (!isAdmin && !hasArbitreRole) {
         await interaction.reply({
           content:
-            "❌ Seuls les administrateurs peuvent déclarer le gagnant d'une partie.",
+            "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent déclarer le gagnant d'une partie.",
           ephemeral: true,
         });
         return;

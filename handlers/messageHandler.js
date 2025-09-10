@@ -57,8 +57,12 @@ function hasAdminPermission(member) {
 }
 
 function canUseCustomCommands(member) {
-  // Tous les membres peuvent utiliser les commandes custom et classement
-  return true;
+  // Seuls les administrateurs et les utilisateurs avec le rôle "arbitre" peuvent utiliser les commandes custom
+  const isAdmin = member.permissions.has("Administrator");
+  const hasArbitreRole = member.roles.cache.some(
+    (role) => role.name.toLowerCase() === "arbitre"
+  );
+  return isAdmin || hasArbitreRole;
 }
 
 function canUseAdminCommands(member) {
@@ -97,7 +101,6 @@ export class MessageHandler {
     const customCommands = [
       "!custom start",
       "!custom stop",
-      "!custom reset",
       "!custom reroll",
       "!custom test",
       "!custom random",
@@ -109,7 +112,7 @@ export class MessageHandler {
 
     if (isCustomCommand && !canUseCustomCommands(message.member)) {
       await message.reply(
-        "❌ Vous devez être membre du serveur pour utiliser cette commande."
+        "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent utiliser les commandes custom."
       );
       return;
     }
@@ -143,10 +146,6 @@ export class MessageHandler {
     }
     if (message.content === "!custom stop") {
       await this.customGameHandler.stopCustomGame(message);
-      return;
-    }
-    if (message.content === "!custom reset") {
-      await this.customGameHandler.resetCustomGame(message);
       return;
     }
     if (message.content === "!custom reroll") {
@@ -247,8 +246,7 @@ export class MessageHandler {
             name: "🎮 Queue 5v5 Custom",
             value: [
               "`!custom start` - Démarrer une queue 5v5",
-              "`!custom stop` - Arrêter et vider la queue",
-              "`!custom reset` - Vider la queue et recommencer",
+              "`!custom stop` - Arrêter, vider et reset la queue",
               "`!custom reroll` - Refaire les équipes avec les joueurs actuels",
               "`!custom test` - Créer 10 joueurs de test prédéfinis",
               "`!custom random` - Créer 10 joueurs avec rôles/niveaux aléatoires",
