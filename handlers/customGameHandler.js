@@ -1128,12 +1128,28 @@ export class CustomGameHandler {
       .setColor("#ffd700")
       .setTimestamp();
 
+    // Log pour diagnostic
+    Logger.info(
+      `[CUSTOM_GAME] Création embed Elo - Total joueurs: ${
+        Object.keys(eloResult.updatedPlayers).length
+      }`
+    );
+    Object.values(eloResult.updatedPlayers).forEach((player) => {
+      Logger.info(
+        `[CUSTOM_GAME] Joueur: ${player.username}, Result: ${player.result}, Change: ${player.change}`
+      );
+    });
+
     // Séparer les gagnants et les perdants
     const winners = Object.values(eloResult.updatedPlayers).filter(
       (p) => p.result === "win"
     );
     const losers = Object.values(eloResult.updatedPlayers).filter(
       (p) => p.result === "lose"
+    );
+
+    Logger.info(
+      `[CUSTOM_GAME] Gagnants trouvés: ${winners.length}, Perdants trouvés: ${losers.length}`
     );
 
     // Affichage des gagnants
@@ -1166,6 +1182,28 @@ export class CustomGameHandler {
         value: losersText,
         inline: false,
       });
+    } else {
+      // Fallback: afficher tous les joueurs qui ne sont pas gagnants
+      const allPlayers = Object.values(eloResult.updatedPlayers);
+      const nonWinners = allPlayers.filter((p) => p.result !== "win");
+
+      if (nonWinners.length > 0) {
+        Logger.info(
+          `[CUSTOM_GAME] Fallback: Affichage de ${nonWinners.length} non-gagnants`
+        );
+        const nonWinnersText = nonWinners
+          .map((player) => {
+            const changeText = `${player.change}`;
+            return `🔴 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
+          })
+          .join("\n");
+
+        embed.addFields({
+          name: "🔴 Perdants",
+          value: nonWinnersText,
+          inline: false,
+        });
+      }
     }
 
     return embed;
