@@ -56,6 +56,15 @@ function hasAdminPermission(member) {
   return member.permissions.has("Administrator");
 }
 
+function canUseCustomCommands(member) {
+  // Tous les membres peuvent utiliser les commandes custom et classement
+  return true;
+}
+
+function canUseAdminCommands(member) {
+  return member.permissions.has("Administrator");
+}
+
 export class MessageHandler {
   constructor() {
     this.imageModerationHandler = new ImageModerationHandler();
@@ -73,13 +82,56 @@ export class MessageHandler {
       return;
     }
 
-    // Vérification des permissions pour toutes les commandes
+    // Vérification des permissions pour les commandes admin
     if (
-      message.content.startsWith("!") &&
-      !hasAdminPermission(message.member)
+      message.content === "!resetclassement" &&
+      !canUseAdminCommands(message.member)
     ) {
       await message.reply(
-        "❌ Vous devez avoir la permission **Administrateur** pour utiliser les commandes du bot."
+        "❌ Vous devez avoir la permission **Administrateur** pour utiliser cette commande."
+      );
+      return;
+    }
+
+    // Vérification des permissions pour les commandes custom et classement
+    const customCommands = [
+      "!custom start",
+      "!custom stop",
+      "!custom reset",
+      "!custom reroll",
+      "!custom test",
+      "!custom random",
+      "!classement",
+    ];
+    const isCustomCommand = customCommands.some(
+      (cmd) => message.content === cmd
+    );
+
+    if (isCustomCommand && !canUseCustomCommands(message.member)) {
+      await message.reply(
+        "❌ Vous devez être membre du serveur pour utiliser cette commande."
+      );
+      return;
+    }
+
+    // Vérification des permissions pour les autres commandes (admin only)
+    const otherCommands = [
+      "!addwatch",
+      "!removewatch",
+      "!setrandomuser",
+      "!removerandomuser",
+      "!createtemplate",
+      "!listtemplates",
+      "!deletetemplate",
+      "!sendmessage",
+    ];
+    const isOtherCommand = otherCommands.some((cmd) =>
+      message.content.startsWith(cmd)
+    );
+
+    if (isOtherCommand && !canUseAdminCommands(message.member)) {
+      await message.reply(
+        "❌ Vous devez avoir la permission **Administrateur** pour utiliser cette commande."
       );
       return;
     }
@@ -248,7 +300,7 @@ export class MessageHandler {
           }
         )
         .setFooter({
-          text: "Toutes les commandes nécessitent la permission Administrateur",
+          text: "Commandes Custom/Classement: Tous les membres | Autres commandes: Administrateur uniquement",
         });
 
       await message.reply({ embeds: [helpEmbed] });

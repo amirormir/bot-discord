@@ -10,20 +10,24 @@ ewa/
 │   └── config.js                    # Configuration centralisée
 ├── handlers/
 │   ├── messageHandler.js            # Gestionnaire principal des messages
-│   ├── randomResponseHandler.js     # Gestion des réponses aléatoires
 │   ├── imageModerationHandler.js    # Modération des images
 │   ├── globalResponseHandler.js     # Réponses globales et ADC
-│   └── messageTemplateHandler.js    # Gestion des templates de messages
+│   ├── messageTemplateHandler.js    # Gestion des templates de messages
+│   └── customGameHandler.js         # Gestion de la queue 5v5
 ├── models/
 │   ├── WatchedUser.js               # Modèle des utilisateurs surveillés
 │   ├── RandomResponseUser.js        # Modèle de l'utilisateur random
 │   ├── AdcTrigger.js                # Modèle des déclencheurs ADC
-│   └── MessageTemplate.js           # Modèle des templates de messages
+│   ├── MessageTemplate.js           # Modèle des templates de messages
+│   ├── Player.js                    # Modèle des joueurs 5v5
+│   ├── Queue.js                     # Modèle de la queue 5v5
+│   └── PlayerStats.js               # Modèle des statistiques des joueurs
 ├── services/
 │   └── discordBot.js                # Service principal du bot
 ├── utils/
 │   ├── logger.js                    # Utilitaire de logging
 │   ├── imageDetector.js             # Détection d'images
+│   ├── teamBuilder.js               # Algorithme de création d'équipes 5v5
 │   └── db.js                        # Connexion MongoDB
 ├── index.js                         # Point d'entrée principal
 └── package.json
@@ -62,30 +66,60 @@ ewa/
 - Envoi via sélecteur de channel avec `@everyone`
 - Interface utilisateur intuitive avec menus déroulants
 
-## Commandes Administrateur
+### 6. Queue 5v5 Custom
 
-Toutes les commandes nécessitent la permission **Administrateur** :
+- Système de file d'attente pour organiser des parties 5v5
+- Sélection de rôles (Top, Jungle, Mid, ADC, Support, Fill)
+- Attribution de niveaux (1-5) pour l'équilibrage
+- Algorithme de backtracking pour un équilibrage optimal des équipes
+- Système de classement et statistiques des joueurs
+- Interface interactive avec boutons et menus déroulants
 
-### Gestion des Utilisateurs Surveillés
+## Commandes
+
+### Commandes Accessibles à Tous les Membres
+
+#### Queue 5v5 Custom
+
+- `!custom start` : Démarrer une queue 5v5
+- `!custom stop` : Arrêter et vider la queue
+- `!custom reset` : Vider la queue et recommencer
+- `!custom reroll` : Refaire les équipes avec les joueurs actuels
+- `!custom test` : Créer 10 joueurs de test prédéfinis
+- `!custom random` : Créer 10 joueurs avec rôles/niveaux aléatoires
+
+#### Statistiques et Classement
+
+- `!classement` : Afficher le classement des joueurs
+- `!stats <@user>` : Afficher les stats détaillées d'un joueur
+
+#### Autres
+
+- `!bazouzou` : Envoyer un bazouzou aléatoire
+- `!help` : Afficher la liste des commandes
+
+### Commandes Administrateur
+
+#### Gestion des Utilisateurs Surveillés
 
 - `!addwatch <userId>` : Ajouter un utilisateur surveillé
 - `!removewatch <userId>` : Retirer un utilisateur surveillé
 
-### Gestion des Réponses Random
+#### Gestion des Réponses Random
 
 - `!setrandomuser <userId>` : Définir l'utilisateur cible des réponses random
 - `!removerandomuser` : Désactiver les réponses random
 
-### Gestion des Templates
+#### Gestion des Templates
 
 - `!createtemplate <nom> <contenu>` : Créer un template de message
 - `!listtemplates` : Lister tous les templates
 - `!deletetemplate <nom>` : Supprimer un template
 - `!sendmessage` : Envoyer un message via sélecteur
 
-### Aide
+#### Administration
 
-- `!help` : Afficher la liste des commandes
+- `!resetclassement` : Réinitialiser le classement (Admin uniquement)
 
 ## Configuration
 
@@ -129,10 +163,10 @@ npm start
 ### Gestionnaires (Handlers)
 
 - `MessageHandler` : Coordonne tous les autres gestionnaires et gère les commandes
-- `RandomResponseHandler` : Gère les réponses aléatoires
 - `ImageModerationHandler` : Gère la modération des images
 - `GlobalResponseHandler` : Gère les réponses globales et ADC
 - `MessageTemplateHandler` : Gère les templates de messages
+- `CustomGameHandler` : Gère la queue 5v5 et le système de classement
 
 ### Modèles (Models)
 
@@ -140,11 +174,15 @@ npm start
 - `RandomResponseUser` : Utilisateur cible des réponses random
 - `AdcTrigger` : Configuration des déclencheurs ADC
 - `MessageTemplate` : Templates de messages
+- `Player` : Joueurs dans la queue 5v5
+- `Queue` : État de la queue 5v5
+- `PlayerStats` : Statistiques des joueurs
 
 ### Utilitaires (Utils)
 
 - `Logger` : Système de logging avec des méthodes spécialisées
 - `ImageDetector` : Détection d'images dans les messages
+- `TeamBuilder` : Algorithme de backtracking pour l'équilibrage des équipes 5v5
 - `db.js` : Connexion et configuration MongoDB
 
 ### Services
@@ -161,7 +199,8 @@ npm start
 
 ## Sécurité
 
-- Toutes les commandes nécessitent la permission Administrateur
+- Commandes sensibles réservées aux administrateurs
+- Commandes custom et classement accessibles à tous les membres
 - Validation des entrées utilisateur
 - Gestion sécurisée des tokens et URLs
 
