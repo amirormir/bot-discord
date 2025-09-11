@@ -77,6 +77,23 @@ export class AdminHandler {
   }
 
   /**
+   * Gère les commandes publiques (accessibles à tous)
+   * @param {Message} message - Le message Discord
+   * @returns {Promise<boolean>} - true si une commande publique a été traitée
+   */
+  async handlePublicCommand(message) {
+    const content = message.content.toLowerCase().trim();
+
+    // Commande pour afficher l'ELO d'un joueur
+    if (content.startsWith("!elo")) {
+      await this.showPlayerElo(message);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Met en pause ou active les réponses globales
    * @param {Message} message - Le message Discord
    */
@@ -352,6 +369,138 @@ export class AdminHandler {
     } catch (error) {
       Logger.error(`[ADMIN] Erreur lors du reset ELO: ${error.message}`);
       await message.reply("❌ Une erreur est survenue lors du reset ELO.");
+    }
+  }
+
+  /**
+   * Affiche l'ELO et les stats d'un joueur (commande publique)
+   * @param {Message} message - Le message Discord
+   */
+  async showPlayerElo(message) {
+    const content = message.content;
+    const user = message.mentions.users.first();
+
+    if (!user) {
+      const embed = new EmbedBuilder()
+        .setColor(0xff6b6b)
+        .setTitle("❌ Utilisateur Non Spécifié")
+        .setDescription(
+          "**Utilisation:**\n" +
+            "`!elo @utilisateur` - Afficher l'ELO et les stats d'un joueur\n\n" +
+            "**Exemple:**\n" +
+            "`!elo @Nickel`"
+        );
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    try {
+      const playerStats = await PlayerStats.findOne({ userId: user.id });
+
+      if (!playerStats) {
+        const embed = new EmbedBuilder()
+          .setColor(0xffa500)
+          .setTitle("📊 Stats du Joueur")
+          .setDescription(
+            `**${user.username}** n'a pas encore joué de parties.`
+          )
+          .addFields({
+            name: "ELO",
+            value: "1000 (défaut)",
+            inline: true,
+          })
+          .addFields({
+            name: "Parties Jouées",
+            value: "0",
+            inline: true,
+          })
+          .addFields({
+            name: "Winrate",
+            value: "N/A",
+            inline: true,
+          })
+          .setThumbnail(user.displayAvatarURL())
+          .setTimestamp();
+
+        await message.reply({ embeds: [embed] });
+        return;
+      }
+
+      // Calculer le winrate
+      const winrate =
+        playerStats.totalGames > 0
+          ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
+          : "0.0";
+
+      // Déterminer la couleur selon l'ELO
+      let color = 0x808080; // Gris par défaut
+      if (playerStats.elo >= 1500) color = 0xffd700; // Or
+      else if (playerStats.elo >= 1300) color = 0xc0c0c0; // Argent
+      else if (playerStats.elo >= 1100) color = 0xcd7f32; // Bronze
+      else if (playerStats.elo < 900) color = 0xff6b6b; // Rouge (ELO bas)
+
+      // Déterminer le rang selon l'ELO
+      let rank = "🥉 Bronze";
+      if (playerStats.elo >= 1500) rank = "🥇 Or";
+      else if (playerStats.elo >= 1300) rank = "🥈 Argent";
+      else if (playerStats.elo >= 1100) rank = "🥉 Bronze";
+      else if (playerStats.elo < 900) rank = "🔻 ELO Bas";
+
+      const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`📊 Stats de ${user.username}`)
+        .setDescription(`**${rank}**`)
+        .addFields(
+          { name: "ELO", value: `${playerStats.elo}`, inline: true },
+          {
+            name: "Parties Jouées",
+            value: `${playerStats.gamesPlayed}`,
+            inline: true,
+          },
+          { name: "Winrate", value: `${winrate}%`, inline: true },
+          { name: "Victoires", value: `${playerStats.wins}`, inline: true },
+          { name: "Défaites", value: `${playerStats.losses}`, inline: true },
+          {
+            name: "Dernière Mise à Jour",
+            value: `<t:${Math.floor(
+              playerStats.lastUpdated.getTime() / 1000
+            )}:R>`,
+            inline: true,
+          }
+        )
+        .setThumbnail(user.displayAvatarURL())
+        .setFooter({ text: `Demandé par ${message.author.username}` })
+        .setTimestamp();
+
+      // Ajouter des infos supplémentaires si disponibles
+      if (
+        playerStats.avgOpponentCostWhenWin > 0 ||
+        playerStats.avgOpponentCostWhenLose > 0
+      ) {
+        embed.addFields({
+          name: "📈 Stats Avancées",
+          value: `Coût moyen adversaires (victoires): ${playerStats.avgOpponentCostWhenWin.toFixed(
+            1
+          )}\nCoût moyen adversaires (défaites): ${playerStats.avgOpponentCostWhenLose.toFixed(
+            1
+          )}`,
+          inline: false,
+        });
+      }
+
+      await message.reply({ embeds: [embed] });
+
+      Logger.info(
+        `[PUBLIC] Stats ELO affichées pour ${user.username} (${user.id}) par ${message.author.tag}`
+      );
+    } catch (error) {
+      Logger.error(
+        `[PUBLIC] Erreur lors de l'affichage des stats: ${error.message}`
+      );
+      await message.reply(
+        "❌ Une erreur est survenue lors de la récupération des stats."
+      );
     }
   }
 }

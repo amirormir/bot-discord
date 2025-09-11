@@ -96,6 +96,14 @@ export class MessageHandler {
       return;
     }
 
+    // Gestion des commandes publiques
+    const publicCommandHandled = await this.adminHandler.handlePublicCommand(
+      message
+    );
+    if (publicCommandHandled) {
+      return;
+    }
+
     // Vérification des permissions pour les commandes admin
     if (
       message.content === "!resetclassement" &&

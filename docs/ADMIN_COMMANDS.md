@@ -1,15 +1,55 @@
-# Commandes Admin
+# Commandes Admin et Publiques
 
-Ce document décrit les nouvelles commandes administrateur disponibles dans le bot.
+Ce document décrit les commandes administrateur et publiques disponibles dans le bot.
 
 ## Permissions
+
+### Commandes Admin
 
 Les commandes admin sont accessibles aux utilisateurs ayant :
 
 - La permission **Administrateur** sur le serveur Discord
 - Le rôle **Arbitre** (pour certaines commandes)
 
+### Commandes Publiques
+
+Les commandes publiques sont accessibles à **tous les utilisateurs**.
+
 ## Commandes Disponibles
+
+### Commandes Publiques
+
+#### `!elo @utilisateur`
+
+Affiche l'ELO et les statistiques d'un joueur.
+
+**Permissions :** Tous les utilisateurs
+
+**Utilisation :**
+
+```
+!elo @Nickel
+```
+
+**Informations affichées :**
+
+- ELO actuel
+- Nombre de parties jouées
+- Winrate (pourcentage de victoires)
+- Nombre de victoires/défaites
+- Rang (Bronze/Argent/Or selon l'ELO)
+- Dernière mise à jour
+- Stats avancées (coût moyen des adversaires)
+
+**Fonctionnalités :**
+
+- Couleur de l'embed selon le rang ELO
+- Gestion des joueurs sans stats (ELO par défaut 1000)
+- Affichage de l'avatar du joueur
+
+---
+
+### Commandes Admin
 
 ### 1. Gestion des Réponses Globales
 
