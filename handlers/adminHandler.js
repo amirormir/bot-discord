@@ -59,6 +59,13 @@ export class AdminHandler {
       return true;
     }
 
+    // Commande confirm reset ELO
+    if (content === "!admin eloreset confirm") {
+      Logger.info(`[ADMIN_DEBUG] Commande eloreset confirm détectée`);
+      await this.confirmEloReset(message);
+      return true;
+    }
+
     // Commandes ELO
     if (content.startsWith("!admin elo")) {
       Logger.info(`[ADMIN_DEBUG] Commande elo détectée: "${content}"`);
@@ -109,9 +116,18 @@ export class AdminHandler {
    * @param {Message} message - Le message Discord
    */
   async handleEloCommand(message) {
-    const args = message.content.split(" ");
+    // Parser la commande de manière plus robuste
+    const content = message.content;
+    const user = message.mentions.users.first();
 
-    if (args.length < 5) {
+    if (!user) {
+      await message.reply("❌ Veuillez mentionner un utilisateur valide.");
+      return;
+    }
+
+    // Extraire l'action (add/remove/set)
+    const actionMatch = content.match(/!admin elo (add|remove|set)/i);
+    if (!actionMatch) {
       const embed = new EmbedBuilder()
         .setColor(0xff6b6b)
         .setTitle("❌ Syntaxe Incorrecte")
@@ -131,14 +147,16 @@ export class AdminHandler {
       return;
     }
 
-    const action = args[2].toLowerCase();
-    const user = message.mentions.users.first();
-    const points = parseInt(args[4]); // Les points sont maintenant à l'index 4
+    const action = actionMatch[1].toLowerCase();
 
-    if (!user) {
-      await message.reply("❌ Veuillez mentionner un utilisateur valide.");
+    // Extraire les points (dernier nombre dans la commande)
+    const pointsMatch = content.match(/(\d+)\s*$/);
+    if (!pointsMatch) {
+      await message.reply("❌ Veuillez entrer un nombre de points valide.");
       return;
     }
+
+    const points = parseInt(pointsMatch[1]);
 
     if (isNaN(points) || points < 0) {
       await message.reply(

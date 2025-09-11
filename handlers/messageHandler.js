@@ -96,12 +96,6 @@ export class MessageHandler {
       return;
     }
 
-    // Gestion de la commande eloreset confirm
-    if (message.content === "!admin eloreset confirm") {
-      await this.adminHandler.confirmEloReset(message);
-      return;
-    }
-
     // Vérification des permissions pour les commandes admin
     if (
       message.content === "!resetclassement" &&
