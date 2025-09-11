@@ -42,21 +42,27 @@ export class AdminHandler {
 
     const content = message.content.toLowerCase().trim();
 
+    // Debug log
+    Logger.info(`[ADMIN_DEBUG] Commande reçue: "${content}"`);
+
     // Commande pour mettre en pause/activer les réponses globales
     if (content === "!admin pauseglobal") {
+      Logger.info(`[ADMIN_DEBUG] Commande pauseglobal détectée`);
       await this.toggleGlobalResponses(message);
+      return true;
+    }
+
+    // Commande reset ELO (vérifier avant les autres commandes elo)
+    if (content === "!admin eloreset" || content === "!admin elo reset") {
+      Logger.info(`[ADMIN_DEBUG] Commande eloreset détectée`);
+      await this.resetAllElo(message);
       return true;
     }
 
     // Commandes ELO
     if (content.startsWith("!admin elo")) {
+      Logger.info(`[ADMIN_DEBUG] Commande elo détectée: "${content}"`);
       await this.handleEloCommand(message);
-      return true;
-    }
-
-    // Commande reset ELO
-    if (content === "!admin eloreset") {
-      await this.resetAllElo(message);
       return true;
     }
 
@@ -105,7 +111,7 @@ export class AdminHandler {
   async handleEloCommand(message) {
     const args = message.content.split(" ");
 
-    if (args.length < 4) {
+    if (args.length < 5) {
       const embed = new EmbedBuilder()
         .setColor(0xff6b6b)
         .setTitle("❌ Syntaxe Incorrecte")
@@ -127,7 +133,7 @@ export class AdminHandler {
 
     const action = args[2].toLowerCase();
     const user = message.mentions.users.first();
-    const points = parseInt(args[3]);
+    const points = parseInt(args[4]); // Les points sont maintenant à l'index 4
 
     if (!user) {
       await message.reply("❌ Veuillez mentionner un utilisateur valide.");
