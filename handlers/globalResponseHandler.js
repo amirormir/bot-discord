@@ -3,7 +3,8 @@ import { AdcTrigger } from "../models/AdcTrigger.js";
 import { BazouzouTrigger } from "../models/BazouzouTrigger.js";
 
 export class GlobalResponseHandler {
-  constructor() {
+  constructor(adminHandler = null) {
+    this.adminHandler = adminHandler;
     this.globalResponses = [
       "pas lu",
       "après qui ta demandé",
@@ -43,6 +44,11 @@ export class GlobalResponseHandler {
   }
 
   shouldRespondGlobally() {
+    // Vérifier si les réponses globales sont pausées
+    if (this.adminHandler && this.adminHandler.isGlobalResponsesPaused()) {
+      return false;
+    }
+
     // 5% de chance de répondre à chaque message
     return Math.random() < 0.05;
   }

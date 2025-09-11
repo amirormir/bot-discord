@@ -3,6 +3,7 @@ import { ImageModerationHandler } from "./imageModerationHandler.js";
 import { GlobalResponseHandler } from "./globalResponseHandler.js";
 import { MessageTemplateHandler } from "./messageTemplateHandler.js";
 import { CustomGameHandler } from "./customGameHandler.js";
+import { AdminHandler } from "./adminHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
 import { RandomResponseUser } from "../models/RandomResponseUser.js";
 import { EmbedBuilder } from "discord.js";
@@ -71,8 +72,9 @@ function canUseAdminCommands(member) {
 
 export class MessageHandler {
   constructor() {
+    this.adminHandler = new AdminHandler();
     this.imageModerationHandler = new ImageModerationHandler();
-    this.globalResponseHandler = new GlobalResponseHandler();
+    this.globalResponseHandler = new GlobalResponseHandler(this.adminHandler);
     this.messageTemplateHandler = new MessageTemplateHandler();
     this.customGameHandler = new CustomGameHandler();
   }
@@ -83,6 +85,20 @@ export class MessageHandler {
     );
 
     if (message.author.bot) {
+      return;
+    }
+
+    // Gestion des commandes admin
+    const adminCommandHandled = await this.adminHandler.handleAdminCommand(
+      message
+    );
+    if (adminCommandHandled) {
+      return;
+    }
+
+    // Gestion de la commande eloreset confirm
+    if (message.content === "!admin eloreset confirm") {
+      await this.adminHandler.confirmEloReset(message);
       return;
     }
 

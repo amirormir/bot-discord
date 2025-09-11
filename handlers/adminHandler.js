@@ -1,0 +1,333 @@
+import { Logger } from "../utils/logger.js";
+import { PlayerStats } from "../models/PlayerStats.js";
+import { Match } from "../models/Match.js";
+import { EmbedBuilder } from "discord.js";
+
+export class AdminHandler {
+  constructor() {
+    this.globalResponsesPaused = false;
+  }
+
+  /**
+   * Vérifie si l'utilisateur a les permissions admin
+   * @param {GuildMember} member - Le membre Discord
+   * @returns {boolean}
+   */
+  hasAdminPermission(member) {
+    return member.permissions.has("Administrator");
+  }
+
+  /**
+   * Vérifie si l'utilisateur peut utiliser les commandes admin (admin ou arbitre)
+   * @param {GuildMember} member - Le membre Discord
+   * @returns {boolean}
+   */
+  canUseAdminCommands(member) {
+    const isAdmin = member.permissions.has("Administrator");
+    const hasArbitreRole = member.roles.cache.some(
+      (role) => role.name.toLowerCase() === "arbitre"
+    );
+    return isAdmin || hasArbitreRole;
+  }
+
+  /**
+   * Gère les commandes admin
+   * @param {Message} message - Le message Discord
+   * @returns {Promise<boolean>} - true si une commande admin a été traitée
+   */
+  async handleAdminCommand(message) {
+    if (!this.canUseAdminCommands(message.member)) {
+      return false;
+    }
+
+    const content = message.content.toLowerCase().trim();
+
+    // Commande pour mettre en pause/activer les réponses globales
+    if (content === "!admin pauseglobal") {
+      await this.toggleGlobalResponses(message);
+      return true;
+    }
+
+    // Commandes ELO
+    if (content.startsWith("!admin elo")) {
+      await this.handleEloCommand(message);
+      return true;
+    }
+
+    // Commande reset ELO
+    if (content === "!admin eloreset") {
+      await this.resetAllElo(message);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Met en pause ou active les réponses globales
+   * @param {Message} message - Le message Discord
+   */
+  async toggleGlobalResponses(message) {
+    this.globalResponsesPaused = !this.globalResponsesPaused;
+
+    const status = this.globalResponsesPaused
+      ? "⏸️ **PAUSÉES**"
+      : "▶️ **ACTIVES**";
+    const emoji = this.globalResponsesPaused ? "⏸️" : "▶️";
+
+    const embed = new EmbedBuilder()
+      .setColor(this.globalResponsesPaused ? 0xff6b6b : 0x51cf66)
+      .setTitle(`${emoji} Réponses Globales`)
+      .setDescription(`Les réponses globales sont maintenant ${status}`)
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+
+    Logger.info(
+      `[ADMIN] Réponses globales ${
+        this.globalResponsesPaused ? "pausées" : "activées"
+      } par ${message.author.tag}`
+    );
+  }
+
+  /**
+   * Vérifie si les réponses globales sont pausées
+   * @returns {boolean}
+   */
+  isGlobalResponsesPaused() {
+    return this.globalResponsesPaused;
+  }
+
+  /**
+   * Gère les commandes ELO (ajouter/enlever)
+   * @param {Message} message - Le message Discord
+   */
+  async handleEloCommand(message) {
+    const args = message.content.split(" ");
+
+    if (args.length < 4) {
+      const embed = new EmbedBuilder()
+        .setColor(0xff6b6b)
+        .setTitle("❌ Syntaxe Incorrecte")
+        .setDescription(
+          "**Utilisation:**\n" +
+            "`!admin elo add @utilisateur <points>` - Ajouter des points ELO\n" +
+            "`!admin elo remove @utilisateur <points>` - Enlever des points ELO\n" +
+            "`!admin elo set @utilisateur <points>` - Définir l'ELO exact"
+        )
+        .addFields({
+          name: "Exemples",
+          value:
+            "`!admin elo add @Nickel 50`\n`!admin elo remove @Nickel 25`\n`!admin elo set @Nickel 1200`",
+        });
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    const action = args[2].toLowerCase();
+    const user = message.mentions.users.first();
+    const points = parseInt(args[3]);
+
+    if (!user) {
+      await message.reply("❌ Veuillez mentionner un utilisateur valide.");
+      return;
+    }
+
+    if (isNaN(points) || points < 0) {
+      await message.reply(
+        "❌ Veuillez entrer un nombre de points valide (positif)."
+      );
+      return;
+    }
+
+    try {
+      let playerStats = await PlayerStats.findOne({ userId: user.id });
+
+      if (!playerStats) {
+        // Créer les stats si elles n'existent pas
+        playerStats = await PlayerStats.create({
+          userId: user.id,
+          username: user.username,
+          elo: 1000,
+          gamesPlayed: 0,
+        });
+      }
+
+      const oldElo = playerStats.elo;
+      let newElo;
+
+      switch (action) {
+        case "add":
+          newElo = oldElo + points;
+          break;
+        case "remove":
+          newElo = Math.max(0, oldElo - points);
+          break;
+        case "set":
+          newElo = points;
+          break;
+        default:
+          await message.reply(
+            "❌ Action invalide. Utilisez `add`, `remove` ou `set`."
+          );
+          return;
+      }
+
+      // Ajouter à l'historique ELO
+      playerStats.eloHistory.push({
+        elo: newElo,
+        change: newElo - oldElo,
+        matchId: `admin_${Date.now()}`,
+        date: new Date(),
+      });
+
+      playerStats.elo = newElo;
+      playerStats.lastUpdated = new Date();
+      await playerStats.save();
+
+      const changeText =
+        newElo - oldElo > 0 ? `+${newElo - oldElo}` : `${newElo - oldElo}`;
+      const actionText =
+        action === "add" ? "ajouté" : action === "remove" ? "retiré" : "défini";
+
+      const embed = new EmbedBuilder()
+        .setColor(0x51cf66)
+        .setTitle("✅ ELO Modifié")
+        .setDescription(`ELO ${actionText} pour **${user.username}**`)
+        .addFields(
+          { name: "Ancien ELO", value: `${oldElo}`, inline: true },
+          { name: "Nouveau ELO", value: `${newElo}`, inline: true },
+          { name: "Changement", value: `${changeText}`, inline: true }
+        )
+        .setFooter({ text: `Modifié par ${message.author.username}` })
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+
+      Logger.info(
+        `[ADMIN] ELO ${actionText} pour ${user.username} (${user.id}): ${oldElo} → ${newElo} (${changeText}) par ${message.author.tag}`
+      );
+    } catch (error) {
+      Logger.error(
+        `[ADMIN] Erreur lors de la modification ELO: ${error.message}`
+      );
+      await message.reply(
+        "❌ Une erreur est survenue lors de la modification de l'ELO."
+      );
+    }
+  }
+
+  /**
+   * Remet l'ELO de tous les joueurs à 1000 et leurs matchs à 0
+   * @param {Message} message - Le message Discord
+   */
+  async resetAllElo(message) {
+    // Vérification supplémentaire pour cette commande critique
+    if (!this.hasAdminPermission(message.member)) {
+      await message.reply(
+        "❌ Seuls les administrateurs peuvent utiliser cette commande critique."
+      );
+      return;
+    }
+
+    try {
+      // Confirmation avec embed
+      const confirmEmbed = new EmbedBuilder()
+        .setColor(0xff6b6b)
+        .setTitle("⚠️ CONFIRMATION REQUISE")
+        .setDescription(
+          "**ATTENTION:** Cette action va:\n" +
+            "• Remettre l'ELO de **TOUS** les joueurs à 1000\n" +
+            "• Remettre les matchs joués de **TOUS** les joueurs à 0\n" +
+            "• **SUPPRIMER** tous les matchs de l'historique\n\n" +
+            "**Cette action est IRRÉVERSIBLE !**\n\n" +
+            "Tapez `!admin eloreset confirm` pour confirmer."
+        )
+        .setFooter({ text: "Commande critique - Admin uniquement" });
+
+      await message.reply({ embeds: [confirmEmbed] });
+    } catch (error) {
+      Logger.error(
+        `[ADMIN] Erreur lors de la demande de confirmation: ${error.message}`
+      );
+      await message.reply("❌ Une erreur est survenue.");
+    }
+  }
+
+  /**
+   * Confirme et exécute le reset ELO
+   * @param {Message} message - Le message Discord
+   */
+  async confirmEloReset(message) {
+    if (!this.hasAdminPermission(message.member)) {
+      await message.reply(
+        "❌ Seuls les administrateurs peuvent utiliser cette commande critique."
+      );
+      return;
+    }
+
+    try {
+      const loadingEmbed = new EmbedBuilder()
+        .setColor(0xffa500)
+        .setTitle("🔄 Reset ELO en cours...")
+        .setDescription(
+          "Veuillez patienter, cette opération peut prendre quelques secondes."
+        );
+
+      const loadingMessage = await message.reply({ embeds: [loadingEmbed] });
+
+      // Compter les joueurs avant reset
+      const playerCount = await PlayerStats.countDocuments();
+      const matchCount = await Match.countDocuments();
+
+      // Reset tous les PlayerStats
+      await PlayerStats.updateMany(
+        {},
+        {
+          $set: {
+            elo: 1000,
+            gamesPlayed: 0,
+            wins: 0,
+            losses: 0,
+            totalGames: 0,
+            avgOpponentCostWhenWin: 0,
+            avgOpponentCostWhenLose: 0,
+            winsByOpponentCost: new Map(),
+            lossesByOpponentCost: new Map(),
+            eloHistory: [],
+            lastUpdated: new Date(),
+          },
+        }
+      );
+
+      // Supprimer tous les matchs
+      await Match.deleteMany({});
+
+      const successEmbed = new EmbedBuilder()
+        .setColor(0x51cf66)
+        .setTitle("✅ Reset ELO Terminé")
+        .setDescription("Le reset ELO a été effectué avec succès !")
+        .addFields(
+          {
+            name: "Joueurs réinitialisés",
+            value: `${playerCount}`,
+            inline: true,
+          },
+          { name: "Matchs supprimés", value: `${matchCount}`, inline: true },
+          { name: "Nouvel ELO", value: "1000 pour tous", inline: true }
+        )
+        .setFooter({ text: `Reset effectué par ${message.author.username}` })
+        .setTimestamp();
+
+      await loadingMessage.edit({ embeds: [successEmbed] });
+
+      Logger.info(
+        `[ADMIN] Reset ELO complet effectué par ${message.author.tag} - ${playerCount} joueurs, ${matchCount} matchs supprimés`
+      );
+    } catch (error) {
+      Logger.error(`[ADMIN] Erreur lors du reset ELO: ${error.message}`);
+      await message.reply("❌ Une erreur est survenue lors du reset ELO.");
+    }
+  }
+}
