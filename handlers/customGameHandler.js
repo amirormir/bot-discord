@@ -1140,19 +1140,31 @@ export class CustomGameHandler {
       );
 
       if (!isAdmin && !hasArbitreRole) {
-        await this.safeReply(interaction, {
-          content:
-            "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent déclarer le gagnant d'une partie.",
-          ephemeral: true,
-        });
+        try {
+          await interaction.reply({
+            content:
+              "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent déclarer le gagnant d'une partie.",
+            ephemeral: true,
+          });
+        } catch (error) {
+          Logger.warning(
+            `[CUSTOM_GAME] Erreur reply permission: ${error.message}`
+          );
+        }
         return;
       }
 
       if (!this.currentGameResult) {
-        await this.safeReply(interaction, {
-          content: "❌ Aucune partie en cours à terminer.",
-          ephemeral: true,
-        });
+        try {
+          await interaction.reply({
+            content: "❌ Aucune partie en cours à terminer.",
+            ephemeral: true,
+          });
+        } catch (error) {
+          Logger.warning(
+            `[CUSTOM_GAME] Erreur reply no game: ${error.message}`
+          );
+        }
         return;
       }
 
@@ -1218,15 +1230,21 @@ export class CustomGameHandler {
         .setColor(winner === "team1" ? "#0066ff" : "#ff0000")
         .setTimestamp();
 
-      await this.safeReply(
-        interaction,
-        {
+      // Répondre à l'interaction d'abord
+      try {
+        await interaction.reply({
           content: "✅ Résultat enregistré !",
           embeds: [resultEmbed],
-        },
-        true
-      ); // Forcer reply pour la première réponse
-      hasReplied = true;
+        });
+        hasReplied = true;
+        Logger.info(`[CUSTOM_GAME] Réponse envoyée avec succès`);
+      } catch (error) {
+        Logger.error(
+          `[CUSTOM_GAME] Erreur lors de la réponse: ${error.message}`
+        );
+        // Si on ne peut pas répondre, on ne peut pas faire de followUp non plus
+        throw error;
+      }
 
       // Intégrer le système Elo APRÈS la réponse de l'interaction
       try {
@@ -1246,6 +1264,14 @@ export class CustomGameHandler {
           JSON.stringify(eloResult, null, 2)
         );
 
+        // Vérifier que l'interaction a bien été répondue avant de faire un followUp
+        if (!interaction.replied && !interaction.deferred) {
+          Logger.warning(
+            `[CUSTOM_GAME] Interaction non répondue, impossible de faire followUp`
+          );
+          return;
+        }
+
         // Afficher les changements d'Elo dans l'embed
         const eloEmbed = this.createEloResultEmbed(eloResult);
         Logger.info(`[CUSTOM_GAME] Envoi embed changements Elo`);
@@ -1255,14 +1281,20 @@ export class CustomGameHandler {
         Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
 
         // Envoyer un message d'erreur pour debug seulement si l'interaction est toujours valide
-        try {
-          await interaction.followUp({
-            content: `❌ Erreur système Elo: ${error.message}`,
-            ephemeral: true,
-          });
-        } catch (followUpError) {
+        if (hasReplied && (interaction.replied || interaction.deferred)) {
+          try {
+            await interaction.followUp({
+              content: `❌ Erreur système Elo: ${error.message}`,
+              ephemeral: true,
+            });
+          } catch (followUpError) {
+            Logger.warning(
+              `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur Elo: ${followUpError.message}`
+            );
+          }
+        } else {
           Logger.warning(
-            `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur Elo: ${followUpError.message}`
+            `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur: interaction non répondue`
           );
         }
       }
