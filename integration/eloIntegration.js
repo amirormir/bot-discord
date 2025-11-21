@@ -25,7 +25,7 @@ export class EloIntegration {
       );
 
       // Convertir le format du CustomGameHandler vers le format Elo
-      const matchData = this.convertGameResultToMatchData(gameResult);
+      const matchData = await this.convertGameResultToMatchData(gameResult);
 
       // Résoudre le match avec le système Elo
       const eloResult = await this.eloController.resolveMatch(
@@ -51,7 +51,7 @@ export class EloIntegration {
    * @param {Object} gameResult - Résultat depuis CustomGameHandler
    * @returns {Object} - Données de match pour le système Elo
    */
-  convertGameResultToMatchData(gameResult) {
+  async convertGameResultToMatchData(gameResult) {
     const { team1, team2, winner } = gameResult;
 
     Logger.info(`[ELO_INTEGRATION] Conversion - Winner reçu: ${winner}`);
@@ -66,24 +66,69 @@ export class EloIntegration {
         .join(", ")}`
     );
 
+    // Récupérer les Elos depuis PlayerStats si non présents
+    const { PlayerStats } = await import("../models/PlayerStats.js");
+
     const matchData = {
       team1: {
-        players: team1.players.map((player) => ({
-          userId: player.userId,
-          username: player.username,
-          elo: player.elo || 1000, // Elo par défaut si non défini
-          cost: player.selectedCost,
-          role: player.assignedRole,
-        })),
+        players: await Promise.all(
+          team1.players.map(async (player) => {
+            // Récupérer PlayerStats une seule fois
+            const playerStats = await PlayerStats.findOne({
+              userId: player.userId,
+            });
+
+            let elo = player.elo;
+            // Si l'Elo n'est pas présent (undefined ou null), le récupérer depuis PlayerStats
+            if (elo === undefined || elo === null) {
+              elo = playerStats ? playerStats.elo : 1000;
+              Logger.info(
+                `[ELO_INTEGRATION] Elo récupéré depuis PlayerStats pour ${player.username}: ${elo}`
+              );
+            }
+            // Récupérer aussi gamesPlayed pour le calcul du K factor
+            const gamesPlayed = playerStats ? playerStats.gamesPlayed : 0;
+
+            return {
+              userId: player.userId,
+              username: player.username,
+              elo: elo,
+              cost: player.selectedCost,
+              role: player.assignedRole,
+              gamesPlayed: gamesPlayed,
+            };
+          })
+        ),
       },
       team2: {
-        players: team2.players.map((player) => ({
-          userId: player.userId,
-          username: player.username,
-          elo: player.elo || 1000, // Elo par défaut si non défini
-          cost: player.selectedCost,
-          role: player.assignedRole,
-        })),
+        players: await Promise.all(
+          team2.players.map(async (player) => {
+            // Récupérer PlayerStats une seule fois
+            const playerStats = await PlayerStats.findOne({
+              userId: player.userId,
+            });
+
+            let elo = player.elo;
+            // Si l'Elo n'est pas présent (undefined ou null), le récupérer depuis PlayerStats
+            if (elo === undefined || elo === null) {
+              elo = playerStats ? playerStats.elo : 1000;
+              Logger.info(
+                `[ELO_INTEGRATION] Elo récupéré depuis PlayerStats pour ${player.username}: ${elo}`
+              );
+            }
+            // Récupérer aussi gamesPlayed pour le calcul du K factor
+            const gamesPlayed = playerStats ? playerStats.gamesPlayed : 0;
+
+            return {
+              userId: player.userId,
+              username: player.username,
+              elo: elo,
+              cost: player.selectedCost,
+              role: player.assignedRole,
+              gamesPlayed: gamesPlayed,
+            };
+          })
+        ),
       },
       winner:
         winner === "team1" ? "team1" : winner === "team2" ? "team2" : winner,
@@ -93,6 +138,16 @@ export class EloIntegration {
 
     Logger.info(
       `[ELO_INTEGRATION] Match data créé - Winner: ${matchData.winner}`
+    );
+    Logger.info(
+      `[ELO_INTEGRATION] Team1 Elos: ${matchData.team1.players
+        .map((p) => `${p.username}:${p.elo}`)
+        .join(", ")}`
+    );
+    Logger.info(
+      `[ELO_INTEGRATION] Team2 Elos: ${matchData.team2.players
+        .map((p) => `${p.username}:${p.elo}`)
+        .join(", ")}`
     );
     return matchData;
   }

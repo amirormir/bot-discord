@@ -569,14 +569,14 @@ export class CustomGameHandler {
         components: [buttonRow],
       });
 
-      // Stocker le résultat de la partie en cours
+      // Stocker le résultat de la partie en cours avec les Elos
       this.currentGameResult = {
         team1: {
-          players: result.team1,
+          players: team1WithElo, // Utiliser les joueurs avec Elo
           averageCost: result.team1Cost,
         },
         team2: {
-          players: result.team2,
+          players: team2WithElo, // Utiliser les joueurs avec Elo
           averageCost: result.team2Cost,
         },
         costDifference: result.costDifference,
@@ -1108,14 +1108,15 @@ export class CustomGameHandler {
    * Helper pour répondre à une interaction de manière sécurisée
    * @param {Interaction} interaction - L'interaction Discord
    * @param {Object} options - Options pour la réponse
+   * @param {boolean} forceReply - Forcer l'utilisation de reply (pour la première réponse)
    * @returns {Promise<void>}
    */
-  async safeReply(interaction, options) {
+  async safeReply(interaction, options, forceReply = false) {
     try {
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(options);
-      } else {
+      if (forceReply || (!interaction.replied && !interaction.deferred)) {
         await interaction.reply(options);
+      } else {
+        await interaction.followUp(options);
       }
     } catch (error) {
       // Si l'interaction a expiré ou est invalide, on log juste l'erreur
@@ -1217,10 +1218,14 @@ export class CustomGameHandler {
         .setColor(winner === "team1" ? "#0066ff" : "#ff0000")
         .setTimestamp();
 
-      await this.safeReply(interaction, {
-        content: "✅ Résultat enregistré !",
-        embeds: [resultEmbed],
-      });
+      await this.safeReply(
+        interaction,
+        {
+          content: "✅ Résultat enregistré !",
+          embeds: [resultEmbed],
+        },
+        true
+      ); // Forcer reply pour la première réponse
       hasReplied = true;
 
       // Intégrer le système Elo APRÈS la réponse de l'interaction
