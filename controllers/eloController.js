@@ -276,20 +276,31 @@ export class EloController {
       duration: matchData.duration || null,
       victoryMargin: matchData.victoryMargin || null,
       eloCalculations: {
+        // Calculer l'expected moyen pour chaque équipe basé sur les expected individuels
         team1Expected:
-          eloCalculations.matchSummary.blendedExpected.team1Expected,
+          eloCalculations.team1.length > 0
+            ? eloCalculations.team1.reduce(
+                (sum, p) => sum + (p.eloChange?.expected || 0),
+                0
+              ) / eloCalculations.team1.length
+            : 0.5,
         team2Expected:
-          eloCalculations.matchSummary.blendedExpected.team2Expected,
+          eloCalculations.team2.length > 0
+            ? eloCalculations.team2.reduce(
+                (sum, p) => sum + (p.eloChange?.expected || 0),
+                0
+              ) / eloCalculations.team2.length
+            : 0.5,
         team1Change: eloCalculations.team1.reduce(
-          (sum, p) => sum + p.eloChange.change,
+          (sum, p) => sum + (p.eloChange?.change || 0),
           0
         ),
         team2Change: eloCalculations.team2.reduce(
-          (sum, p) => sum + p.eloChange.change,
+          (sum, p) => sum + (p.eloChange?.change || 0),
           0
         ),
-        kFactor: eloCalculations.team1[0]?.eloChange.kFactor || 24,
-        lambda: this.eloService.getConfig().lambda,
+        kFactor: eloCalculations.team1[0]?.eloChange?.kFactor || 24,
+        lambda: null, // Plus utilisé dans le système Elo-only
       },
       resolvedBy,
     });
