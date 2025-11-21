@@ -338,7 +338,7 @@ export class TeamBuilder {
 
     // On doit avoir exactement 5 joueurs au total
     if (totalSpecific + totalFill !== 5) {
-      Logger.warn(
+      Logger.warning(
         `[TEAM_BUILDER] canAssignRoles: Nombre incorrect de joueurs (${totalSpecific} spécifiques + ${totalFill} Fill = ${totalSpecific + totalFill}, attendu 5)`
       );
       return false;
@@ -353,7 +353,7 @@ export class TeamBuilder {
     const canAssign = missingRoles.length <= totalFill;
 
     if (!canAssign) {
-      Logger.warn(
+      Logger.warning(
         `[TEAM_BUILDER] canAssignRoles: Rôles manquants (${missingRoles.join(", ")}) mais seulement ${totalFill} Fill disponibles`
       );
     }
@@ -401,7 +401,7 @@ export class TeamBuilder {
 
     // Vérifier qu'on a bien assigné tous les rôles
     if (usedRoles.size !== 5) {
-      Logger.warn(
+      Logger.warning(
         `[TEAM_BUILDER] Impossible d'assigner tous les rôles à l'équipe`
       );
       return null;

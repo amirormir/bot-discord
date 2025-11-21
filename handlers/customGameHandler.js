@@ -1120,7 +1120,7 @@ export class CustomGameHandler {
     } catch (error) {
       // Si l'interaction a expiré ou est invalide, on log juste l'erreur
       if (error.code === 10062 || error.message.includes("Unknown interaction")) {
-        Logger.warn(
+        Logger.warning(
           `[CUSTOM_GAME] Interaction expirée ou invalide: ${error.message}`
         );
       } else {
@@ -1256,7 +1256,7 @@ export class CustomGameHandler {
             ephemeral: true,
           });
         } catch (followUpError) {
-          Logger.warn(
+          Logger.warning(
             `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur Elo: ${followUpError.message}`
           );
         }
@@ -1286,7 +1286,7 @@ export class CustomGameHandler {
             ephemeral: true,
           });
         } catch (followUpError) {
-          Logger.warn(
+          Logger.warning(
             `[CUSTOM_GAME] Impossible d'envoyer le message d'erreur: ${followUpError.message}`
           );
         }
