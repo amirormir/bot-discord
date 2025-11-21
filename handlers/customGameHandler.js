@@ -991,20 +991,39 @@ export class CustomGameHandler {
       const roles = ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"];
       const testPlayers = [];
 
-      // Créer 10 joueurs avec des rôles, niveaux et Elos aléatoires
-      for (let i = 1; i <= 10; i++) {
-        const randomRole = roles[Math.floor(Math.random() * roles.length)];
-        const randomCost = Math.floor(Math.random() * 5) + 1; // 1-5
-        // Elo aléatoire entre 900 et 1100
-        const randomElo = Math.floor(Math.random() * 201) + 900; // 900-1100
+      // Garantir qu'on a au moins 2 joueurs de chaque rôle principal (pour pouvoir créer 2 équipes)
+      // Stratégie : créer 2 joueurs de chaque rôle principal, puis 0 Fill
+      const requiredRoles = ["Top", "Jungle", "Mid", "ADC", "Support"];
+      const roleCounts = {
+        Top: 0,
+        Jungle: 0,
+        Mid: 0,
+        ADC: 0,
+        Support: 0,
+        Fill: 0,
+      };
 
-        testPlayers.push({
-          username: `TestPlayer${i}`,
-          selectedRole: randomRole,
-          selectedCost: randomCost,
-          elo: randomElo,
-        });
+      // Créer 2 joueurs de chaque rôle principal (10 joueurs au total)
+      for (let i = 0; i < requiredRoles.length; i++) {
+        for (let j = 0; j < 2; j++) {
+          const role = requiredRoles[i];
+          const randomCost = Math.floor(Math.random() * 5) + 1; // 1-5
+          // Elo aléatoire entre 900 et 1100
+          const randomElo = Math.floor(Math.random() * 201) + 900; // 900-1100
+
+          testPlayers.push({
+            username: `TestPlayer${testPlayers.length + 1}`,
+            selectedRole: role,
+            selectedCost: randomCost,
+            elo: randomElo,
+          });
+          roleCounts[role]++;
+        }
       }
+
+      Logger.info(
+        `[CUSTOM_GAME] Distribution des rôles garantie: ${JSON.stringify(roleCounts)}`
+      );
 
       // Créer les joueurs et leurs statistiques dans la DB
       const baseTimestamp = Date.now();
