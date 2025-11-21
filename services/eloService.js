@@ -4,12 +4,6 @@ export class EloService {
   constructor() {
     // Configuration des paramètres Elo
     this.config = {
-      // Facteur de conversion Cost vers Elo (1 cost = 60 Elo par défaut)
-      costToElo: 60,
-
-      // Poids entre Elo attendu et Cost attendu (0.7 = 70% Elo, 30% Cost)
-      lambda: 0.7,
-
       // Facteurs K dynamiques
       kFactors: {
         newbie: 40, // < 10 games
@@ -27,71 +21,23 @@ export class EloService {
   }
 
   /**
-   * Calcule l'Elo attendu classique entre deux équipes
-   * @param {number} team1Elo - Elo moyen de l'équipe 1
-   * @param {number} team2Elo - Elo moyen de l'équipe 2
-   * @returns {Object} - {team1Expected, team2Expected}
+   * Calcule l'expected individuel pour un joueur basé sur son Elo vs l'Elo moyen adverse
+   * @param {number} playerElo - Elo du joueur
+   * @param {number} enemyAvgElo - Elo moyen de l'équipe adverse
+   * @returns {number} - Expected (probabilité de victoire entre 0 et 1)
    */
-  calculateExpectedElo(team1Elo, team2Elo) {
-    const team1Expected = 1 / (1 + Math.pow(10, (team2Elo - team1Elo) / 400));
-    const team2Expected = 1 - team1Expected;
+  calculateExpectedPlayerElo(playerElo, enemyAvgElo) {
+    const expected = 1 / (1 + Math.pow(10, (enemyAvgElo - playerElo) / 400));
 
     Logger.info(
-      `[ELO_SERVICE] Expected Elo - Team1: ${team1Expected.toFixed(
-        3
-      )}, Team2: ${team2Expected.toFixed(3)}`
-    );
-
-    return { team1Expected, team2Expected };
-  }
-
-  /**
-   * Calcule l'expected basé sur le coût des équipes
-   * @param {number} team1Cost - Coût moyen de l'équipe 1
-   * @param {number} team2Cost - Coût moyen de l'équipe 2
-   * @returns {Object} - {team1Expected, team2Expected}
-   */
-  calculateExpectedCost(team1Cost, team2Cost) {
-    // Convertir l'écart de coût en équivalent Elo
-    const costDifference = (team1Cost - team2Cost) * this.config.costToElo;
-
-    const team1Expected = 1 / (1 + Math.pow(10, -costDifference / 400));
-    const team2Expected = 1 - team1Expected;
-
-    Logger.info(
-      `[ELO_SERVICE] Expected Cost - Team1: ${team1Expected.toFixed(
-        3
-      )}, Team2: ${team2Expected.toFixed(3)} (diff: ${costDifference.toFixed(
+      `[ELO_SERVICE] Expected individuel - Player Elo: ${playerElo.toFixed(
         1
-      )} Elo)`
+      )}, Enemy Avg Elo: ${enemyAvgElo.toFixed(
+        1
+      )}, Expected: ${expected.toFixed(3)}`
     );
 
-    return { team1Expected, team2Expected };
-  }
-
-  /**
-   * Calcule l'expected blendé entre Elo et Cost
-   * @param {Object} eloExpected - Expected basé sur l'Elo
-   * @param {Object} costExpected - Expected basé sur le coût
-   * @returns {Object} - {team1Expected, team2Expected}
-   */
-  calculateBlendedExpected(eloExpected, costExpected) {
-    const lambda = this.config.lambda;
-
-    const team1Expected =
-      lambda * eloExpected.team1Expected +
-      (1 - lambda) * costExpected.team1Expected;
-    const team2Expected =
-      lambda * eloExpected.team2Expected +
-      (1 - lambda) * costExpected.team2Expected;
-
-    Logger.info(
-      `[ELO_SERVICE] Blended Expected (λ=${lambda}) - Team1: ${team1Expected.toFixed(
-        3
-      )}, Team2: ${team2Expected.toFixed(3)}`
-    );
-
-    return { team1Expected, team2Expected };
+    return expected;
   }
 
   /**
@@ -140,11 +86,11 @@ export class EloService {
    * Calcule le changement d'Elo pour un joueur
    * @param {Object} player - Données du joueur
    * @param {string} result - "win" ou "loss"
-   * @param {Object} expected - Expected blendé
+   * @param {number} playerExpected - Expected individuel du joueur (probabilité de victoire)
    * @param {Object} matchData - Données du match
    * @returns {Object} - {change, kFactor, expected, personalBonus}
    */
-  calculateEloChange(player, result, expected, matchData) {
+  calculateEloChange(player, result, playerExpected, matchData) {
     const kFactor = this.getKFactor(player.elo, player.gamesPlayed);
     const personalBonus = this.calculatePersonalPerformanceBonus(
       player,
@@ -154,10 +100,6 @@ export class EloService {
 
     // Score : 1 pour victoire, 0 pour défaite
     const score = result === "win" ? 1 : 0;
-
-    // Expected basé sur l'équipe du joueur
-    const playerExpected =
-      player.teamId === 1 ? expected.team1Expected : expected.team2Expected;
 
     // Calcul du changement d'Elo
     let change = kFactor * (score - playerExpected) + personalBonus;
@@ -197,7 +139,7 @@ export class EloService {
   calculateMatchEloChanges(matchData) {
     const { team1, team2, winner } = matchData;
 
-    // Calculer les moyennes d'Elo et de coût
+    // Calculer les moyennes d'Elo et de coût (le cost est gardé pour le matchmaking, pas pour le calcul Elo)
     const team1AverageElo =
       team1.players.reduce((sum, p) => sum + p.elo, 0) / team1.players.length;
     const team2AverageElo =
@@ -217,23 +159,9 @@ export class EloService {
       )}, Cost ${team2AverageCost.toFixed(2)}`
     );
     Logger.info(
-      `[ELO_SERVICE] Différences - Elo: ${(
+      `[ELO_SERVICE] Différence Elo: ${(
         team1AverageElo - team2AverageElo
-      ).toFixed(1)}, Cost: ${(team1AverageCost - team2AverageCost).toFixed(2)}`
-    );
-
-    // Calculer les expected
-    const eloExpected = this.calculateExpectedElo(
-      team1AverageElo,
-      team2AverageElo
-    );
-    const costExpected = this.calculateExpectedCost(
-      team1AverageCost,
-      team2AverageCost
-    );
-    const blendedExpected = this.calculateBlendedExpected(
-      eloExpected,
-      costExpected
+      ).toFixed(1)} (Elo-only expected)`
     );
 
     // Calculer les changements pour chaque joueur
@@ -245,25 +173,33 @@ export class EloService {
         team2AverageElo,
         team1AverageCost,
         team2AverageCost,
-        eloExpected,
-        costExpected,
-        blendedExpected,
         winner,
       },
     };
 
     Logger.info(`[ELO_SERVICE] Winner: ${winner}`);
 
-    // Traiter l'équipe 1
+    // Traiter l'équipe 1 - calculer un expected individuel pour chaque joueur
     team1.players.forEach((player) => {
       const result = winner === "team1" ? "win" : "loss";
-      Logger.info(
-        `[ELO_SERVICE] Team1 - ${player.username}: result=${result} (winner=${winner})`
+      // Expected individuel : Elo du joueur vs Elo moyen de l'équipe adverse
+      const playerExpected = this.calculateExpectedPlayerElo(
+        player.elo,
+        team2AverageElo
       );
+
+      Logger.info(
+        `[ELO_SERVICE] Team1 - ${
+          player.username
+        }: result=${result} (winner=${winner}), Elo: ${player.elo.toFixed(
+          1
+        )}, Expected: ${playerExpected.toFixed(3)}`
+      );
+
       const eloChange = this.calculateEloChange(
         { ...player, teamId: 1 },
         result,
-        blendedExpected,
+        playerExpected,
         matchData
       );
 
@@ -274,16 +210,27 @@ export class EloService {
       });
     });
 
-    // Traiter l'équipe 2
+    // Traiter l'équipe 2 - calculer un expected individuel pour chaque joueur
     team2.players.forEach((player) => {
       const result = winner === "team2" ? "win" : "loss";
-      Logger.info(
-        `[ELO_SERVICE] Team2 - ${player.username}: result=${result} (winner=${winner})`
+      // Expected individuel : Elo du joueur vs Elo moyen de l'équipe adverse
+      const playerExpected = this.calculateExpectedPlayerElo(
+        player.elo,
+        team1AverageElo
       );
+
+      Logger.info(
+        `[ELO_SERVICE] Team2 - ${
+          player.username
+        }: result=${result} (winner=${winner}), Elo: ${player.elo.toFixed(
+          1
+        )}, Expected: ${playerExpected.toFixed(3)}`
+      );
+
       const eloChange = this.calculateEloChange(
         { ...player, teamId: 2 },
         result,
-        blendedExpected,
+        playerExpected,
         matchData
       );
 
