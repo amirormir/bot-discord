@@ -178,6 +178,10 @@ export class MessageHandler {
       await this.customGameHandler.simulateRandomPlayers(message);
       return;
     }
+    if (message.content === "!custom start test") {
+      await this.customGameHandler.simulateTestEloPlayers(message);
+      return;
+    }
     if (message.content === "!classement") {
       await this.customGameHandler.showLeaderboard(message);
       return;

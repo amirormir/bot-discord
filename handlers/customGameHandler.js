@@ -973,9 +973,145 @@ export class CustomGameHandler {
     }
   }
 
+  async simulateTestEloPlayers(message) {
+    try {
+      const queue = await this.getOrCreateQueue();
+
+      // Vérifier si il y a déjà des joueurs
+      const existingPlayers = await Player.countDocuments({
+        queueId: queue._id,
+      });
+      if (existingPlayers > 0) {
+        await message.reply(
+          "❌ Il y a déjà des joueurs dans la queue. Utilisez `!custom reset` d'abord."
+        );
+        return;
+      }
+
+      const roles = ["Top", "Jungle", "Mid", "ADC", "Support", "Fill"];
+      const testPlayers = [];
+
+      // Créer 10 joueurs avec des rôles, niveaux et Elos aléatoires
+      for (let i = 1; i <= 10; i++) {
+        const randomRole = roles[Math.floor(Math.random() * roles.length)];
+        const randomCost = Math.floor(Math.random() * 5) + 1; // 1-5
+        // Elo aléatoire entre 900 et 1100
+        const randomElo = Math.floor(Math.random() * 201) + 900; // 900-1100
+
+        testPlayers.push({
+          username: `TestPlayer${i}`,
+          selectedRole: randomRole,
+          selectedCost: randomCost,
+          elo: randomElo,
+        });
+      }
+
+      // Créer les joueurs et leurs statistiques dans la DB
+      const baseTimestamp = Date.now();
+      for (let i = 0; i < testPlayers.length; i++) {
+        const testPlayer = testPlayers[i];
+        // Générer un userId unique pour chaque joueur
+        const userId = `test_${baseTimestamp}_${i}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`;
+
+        // Créer le joueur dans la queue
+        await Player.create({
+          userId: userId,
+          username: testPlayer.username,
+          queueId: queue._id,
+          selectedRole: testPlayer.selectedRole,
+          selectedCost: testPlayer.selectedCost,
+        });
+
+        // Créer ou mettre à jour les PlayerStats avec l'Elo aléatoire
+        let playerStats = await PlayerStats.findOne({ userId: userId });
+        if (!playerStats) {
+          playerStats = await PlayerStats.create({
+            userId: userId,
+            username: testPlayer.username,
+            elo: testPlayer.elo,
+            gamesPlayed: Math.floor(Math.random() * 20), // 0-19 parties pour varier les K factors
+          });
+        } else {
+          playerStats.elo = testPlayer.elo;
+          await playerStats.save();
+        }
+
+        Logger.info(
+          `[CUSTOM_GAME] Joueur test créé: ${testPlayer.username} - Elo: ${testPlayer.elo}, Cost: ${testPlayer.selectedCost}, Role: ${testPlayer.selectedRole}`
+        );
+      }
+
+      Logger.info(
+        `[CUSTOM_GAME] 10 joueurs de test avec Elos aléatoires créés par ${message.author.tag}`
+      );
+
+      // Mettre à jour l'embed
+      await this.updateQueueEmbed(message.channel, queue);
+
+      // Créer un embed récapitulatif avec les Elos
+      const summaryEmbed = new EmbedBuilder()
+        .setTitle("✅ 10 Joueurs de Test Créés")
+        .setDescription(
+          "Les joueurs ont été créés avec des Elos aléatoires entre 900 et 1100.\nLes équipes vont se construire automatiquement."
+        )
+        .addFields(
+          testPlayers.map((p, index) => ({
+            name: `${p.username}`,
+            value: `Elo: **${p.elo}** | Cost: ${p.selectedCost} | Role: ${p.selectedRole}`,
+            inline: true,
+          }))
+        )
+        .setColor("#00ff00")
+        .setTimestamp();
+
+      await message.reply({ embeds: [summaryEmbed] });
+
+      // Construire automatiquement les équipes
+      setTimeout(async () => {
+        await this.buildTeams(message.channel, queue);
+      }, 2000);
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur simulation joueurs test Elo: ${error.message}`
+      );
+      Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+      await message.reply(
+        "❌ Erreur lors de la création des joueurs de test avec Elo."
+      );
+    }
+  }
+
   // Nouvelles méthodes pour gérer les résultats des parties
 
+  /**
+   * Helper pour répondre à une interaction de manière sécurisée
+   * @param {Interaction} interaction - L'interaction Discord
+   * @param {Object} options - Options pour la réponse
+   * @returns {Promise<void>}
+   */
+  async safeReply(interaction, options) {
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(options);
+      } else {
+        await interaction.reply(options);
+      }
+    } catch (error) {
+      // Si l'interaction a expiré ou est invalide, on log juste l'erreur
+      if (error.code === 10062 || error.message.includes("Unknown interaction")) {
+        Logger.warn(
+          `[CUSTOM_GAME] Interaction expirée ou invalide: ${error.message}`
+        );
+      } else {
+        throw error;
+      }
+    }
+  }
+
   async handleGameResult(interaction) {
+    let hasReplied = false;
     try {
       // Vérifier que l'utilisateur est admin ou a le rôle "arbitre"
       const isAdmin = interaction.member.permissions.has("Administrator");
@@ -984,7 +1120,7 @@ export class CustomGameHandler {
       );
 
       if (!isAdmin && !hasArbitreRole) {
-        await interaction.reply({
+        await this.safeReply(interaction, {
           content:
             "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent déclarer le gagnant d'une partie.",
           ephemeral: true,
@@ -993,7 +1129,7 @@ export class CustomGameHandler {
       }
 
       if (!this.currentGameResult) {
-        await interaction.reply({
+        await this.safeReply(interaction, {
           content: "❌ Aucune partie en cours à terminer.",
           ephemeral: true,
         });
@@ -1062,10 +1198,11 @@ export class CustomGameHandler {
         .setColor(winner === "team1" ? "#0066ff" : "#ff0000")
         .setTimestamp();
 
-      await interaction.reply({
+      await this.safeReply(interaction, {
         content: "✅ Résultat enregistré !",
         embeds: [resultEmbed],
       });
+      hasReplied = true;
 
       // Intégrer le système Elo APRÈS la réponse de l'interaction
       try {
@@ -1093,11 +1230,17 @@ export class CustomGameHandler {
         Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
         Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
 
-        // Envoyer un message d'erreur pour debug
-        await interaction.followUp({
-          content: `❌ Erreur système Elo: ${error.message}`,
-          ephemeral: true,
-        });
+        // Envoyer un message d'erreur pour debug seulement si l'interaction est toujours valide
+        try {
+          await interaction.followUp({
+            content: `❌ Erreur système Elo: ${error.message}`,
+            ephemeral: true,
+          });
+        } catch (followUpError) {
+          Logger.warn(
+            `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur Elo: ${followUpError.message}`
+          );
+        }
       }
 
       // Réinitialiser le résultat de la partie en cours
@@ -1108,10 +1251,27 @@ export class CustomGameHandler {
       );
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur gestion résultat: ${error.message}`);
-      await interaction.reply({
-        content: "❌ Erreur lors de l'enregistrement du résultat.",
-        ephemeral: true,
-      });
+      Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+      
+      // Essayer de répondre seulement si on n'a pas encore répondu
+      if (!hasReplied) {
+        await this.safeReply(interaction, {
+          content: "❌ Erreur lors de l'enregistrement du résultat.",
+          ephemeral: true,
+        });
+      } else {
+        // Si on a déjà répondu, essayer un followUp
+        try {
+          await interaction.followUp({
+            content: "❌ Erreur lors de l'enregistrement du résultat.",
+            ephemeral: true,
+          });
+        } catch (followUpError) {
+          Logger.warn(
+            `[CUSTOM_GAME] Impossible d'envoyer le message d'erreur: ${followUpError.message}`
+          );
+        }
+      }
     }
   }
 
