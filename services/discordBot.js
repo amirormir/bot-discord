@@ -78,7 +78,7 @@ export class DiscordBot {
                   .setName("team")
                   .setDescription("Nom ou ID de la team")
                   .setRequired(true)
-                  .setAutocomplete(false)
+                  .setAutocomplete(true)
               )
               .addUserOption((option) =>
                 option
@@ -92,6 +92,18 @@ export class DiscordBot {
                   .setDescription("Pseudo du joueur dans la team")
                   .setRequired(true)
                   .setMaxLength(50)
+              )
+          )
+          .addSubcommand((subcommand) =>
+            subcommand
+              .setName("view")
+              .setDescription("Affiche les informations d'une team")
+              .addStringOption((option) =>
+                option
+                  .setName("team")
+                  .setDescription("Nom ou ID de la team")
+                  .setRequired(true)
+                  .setAutocomplete(true)
               )
           ),
       ].map((command) => command.toJSON());
@@ -141,6 +153,22 @@ export class DiscordBot {
 
           if (subcommand === "add-player") {
             await this.teamCommandHandler.handleAddPlayer(interaction);
+            return;
+          }
+
+          if (subcommand === "view") {
+            await this.teamCommandHandler.handleView(interaction);
+            return;
+          }
+        }
+      }
+
+      // Gestion de l'autocomplete
+      if (interaction.isAutocomplete()) {
+        if (interaction.commandName === "team") {
+          const focusedOption = interaction.options.getFocused(true);
+          if (focusedOption.name === "team") {
+            await this.teamCommandHandler.handleAutocomplete(interaction);
             return;
           }
         }
