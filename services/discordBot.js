@@ -1,9 +1,16 @@
-import { Client, GatewayIntentBits } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  Routes,
+  REST,
+} from "discord.js";
 import { Logger } from "../utils/logger.js";
 import { CONFIG } from "../config/config.js";
 import { MessageHandler } from "../handlers/messageHandler.js";
 import { MessageTemplateHandler } from "../handlers/messageTemplateHandler.js";
 import { RichPresenceService } from "./richPresence.js";
+import { TeamCommandHandler } from "../handlers/teamCommandHandler.js";
 
 export class DiscordBot {
   constructor() {
@@ -18,6 +25,7 @@ export class DiscordBot {
     this.messageHandler = new MessageHandler();
     this.messageTemplateHandler = new MessageTemplateHandler();
     this.richPresence = new RichPresenceService();
+    this.teamCommandHandler = new TeamCommandHandler();
     this.setupEventHandlers();
   }
 
@@ -27,8 +35,88 @@ export class DiscordBot {
     this.client.on("interactionCreate", this.onInteractionCreate.bind(this));
   }
 
-  onReady() {
+  async onReady() {
     Logger.bot(`Connecté en tant que ${this.client.user.tag}`);
+    // Enregistrer les commandes slash une fois le bot prêt
+    await this.registerSlashCommands();
+  }
+
+  /**
+   * Enregistre les commandes slash
+   */
+  async registerSlashCommands() {
+    try {
+      const commands = [
+        new SlashCommandBuilder()
+          .setName("team")
+          .setDescription("Gestion des teams")
+          .addSubcommand((subcommand) =>
+            subcommand
+              .setName("create")
+              .setDescription("Crée une nouvelle team")
+              .addStringOption((option) =>
+                option
+                  .setName("name")
+                  .setDescription("Nom de la team")
+                  .setRequired(true)
+                  .setMaxLength(50)
+              )
+              .addStringOption((option) =>
+                option
+                  .setName("tag")
+                  .setDescription("Tag optionnel de la team")
+                  .setRequired(false)
+                  .setMaxLength(10)
+              )
+          )
+          .addSubcommand((subcommand) =>
+            subcommand
+              .setName("add-player")
+              .setDescription("Ajoute un joueur à une team")
+              .addStringOption((option) =>
+                option
+                  .setName("team")
+                  .setDescription("Nom ou ID de la team")
+                  .setRequired(true)
+                  .setAutocomplete(false)
+              )
+              .addUserOption((option) =>
+                option
+                  .setName("user")
+                  .setDescription("Utilisateur Discord à ajouter")
+                  .setRequired(true)
+              )
+              .addStringOption((option) =>
+                option
+                  .setName("pseudo")
+                  .setDescription("Pseudo du joueur dans la team")
+                  .setRequired(true)
+                  .setMaxLength(50)
+              )
+          ),
+      ].map((command) => command.toJSON());
+
+      const rest = new REST({ version: "10" }).setToken(CONFIG.DISCORD_TOKEN);
+
+      Logger.info(
+        `[DISCORD_BOT] Enregistrement de ${commands.length} commande(s) slash...`
+      );
+
+      // Enregistrer les commandes globalement (peut prendre jusqu'à 1 heure pour se propager)
+      // Pour un déploiement plus rapide, utilisez Routes.guildCommands() avec un guildId spécifique
+      const data = await rest.put(
+        Routes.applicationCommands(this.client.user.id),
+        { body: commands }
+      );
+
+      Logger.success(
+        `[DISCORD_BOT] ${data.length} commande(s) slash enregistrée(s) avec succès`
+      );
+    } catch (error) {
+      Logger.error(
+        `[DISCORD_BOT] Erreur lors de l'enregistrement des commandes slash: ${error.message}`
+      );
+    }
   }
 
   async onMessageCreate(message) {
@@ -41,6 +129,24 @@ export class DiscordBot {
 
   async onInteractionCreate(interaction) {
     try {
+      // Gestion des commandes slash
+      if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === "team") {
+          const subcommand = interaction.options.getSubcommand();
+
+          if (subcommand === "create") {
+            await this.teamCommandHandler.handleCreate(interaction);
+            return;
+          }
+
+          if (subcommand === "add-player") {
+            await this.teamCommandHandler.handleAddPlayer(interaction);
+            return;
+          }
+        }
+      }
+
+      // Gestion des select menus
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === "channel_selector") {
           await this.messageTemplateHandler.handleChannelSelector(interaction);
@@ -61,6 +167,8 @@ export class DiscordBot {
           );
         }
       }
+
+      // Gestion des boutons
       if (interaction.isButton()) {
         if (interaction.customId === "join_queue") {
           await this.messageHandler.customGameHandler.joinQueue(interaction);
