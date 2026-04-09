@@ -124,6 +124,7 @@ export class MessageHandler {
       "!custom reroll",
       "!custom test",
       "!custom random",
+      "!custom start test",
       "!classement",
     ];
     const isCustomCommand = customCommands.some(
@@ -265,84 +266,135 @@ export class MessageHandler {
 
     // Commande pour lister toutes les commandes
     if (message.content === "!loli") {
-      const helpEmbed = new EmbedBuilder()
-        .setTitle("🤖 Commandes du Bot")
-        .setColor("#00ff00")
-        .addFields(
-          {
-            name: "🎮 Queue 5v5 Custom",
-            value: [
-              "`!custom start` - Démarrer une queue 5v5",
-              "`!custom stop` - Arrêter, vider et reset la queue",
-              "`!custom reroll` - Refaire les équipes avec les joueurs actuels",
-              "`!custom test` - Créer 10 joueurs de test prédéfinis",
-              "`!custom random` - Créer 10 joueurs avec rôles/niveaux aléatoires",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "📊 Statistiques et Classement",
-            value: [
-              "`!classement` - Afficher le classement des joueurs",
-              "`!stats <@user>` - Afficher les stats détaillées d'un joueur",
-              "`!resetclassement` - Réinitialiser le classement (Admin)",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "👥 Gestion des utilisateurs surveillés",
-            value: [
-              "`!addwatch <@user>` - Ajouter un utilisateur surveillé",
-              "`!removewatch <@user>` - Retirer un utilisateur surveillé",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "🎲 Gestion des réponses aléatoires",
-            value: [
-              "`!setrandomuser <@user>` - Définir l'utilisateur pour les réponses aléatoires",
-              "`!removerandomuser` - Retirer l'utilisateur des réponses aléatoires",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "📝 Messages & Templates",
-            value: [
-              "`!msg #channel <contenu>` - Envoyer un message rapidement",
-              "`!embed` - Créer un embed interactif (étape par étape)",
-              "`!createtemplate <nom> <contenu>` - Créer un template",
-              "`!listtemplates` - Lister tous les templates",
-              "`!deletetemplate <nom>` - Supprimer un template",
-              "`!sendmessage` - Envoyer un template (sélecteur)",
-              "`!sendmessage <nom> #channel` - Envoyer un template (direct)",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "🏷️ Reaction Roles",
-            value: [
-              "`!rr setup` - Configurer un nouveau reaction role (interactif)",
-              "`!rr add <msgId> <emoji> @role` - Ajouter une réaction à un message existant",
-              "`!rr remove <msgId> <emoji>` - Retirer une réaction",
-              "`!rr list` - Lister tous les reaction roles",
-              "`!rr delete <msgId>` - Supprimer un reaction role",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "🎯 Autres commandes",
-            value: [
-              "`!bazouzou` - Envoyer un bazouzou aléatoire",
-              "`!loli` - Afficher cette aide",
-            ].join("\n"),
-            inline: false,
-          }
-        )
-        .setFooter({
-          text: "Commandes Custom/Classement: Tous les membres | Autres commandes: Administrateur uniquement",
-        });
+      const helpPages = [
+        {
+          title: "🤖 Commandes du Bot",
+          description: "Page 1/3 • Queue, stats et ELO",
+          fields: [
+            {
+              name: "🎮 Queue 5v5 Custom",
+              value: [
+                "`!custom start` - Démarrer une queue 5v5",
+                "`!custom stop` - Arrêter et vider la queue",
+                "`!custom reroll` - Refaire les équipes avec les joueurs actuels",
+                "`!custom test` - Créer 10 joueurs de test prédéfinis",
+                "`!custom random` - Créer 10 joueurs aléatoires",
+                "`!custom start test` - Générer 10 joueurs de test avec ELO",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "📊 Stats et classement",
+              value: [
+                "`!classement` - Afficher le classement",
+                "`!stats <@user>` - Afficher les stats détaillées d'un joueur",
+                "`!elo <@user>` - Afficher l'ELO et les stats rapides d'un joueur",
+                "`!resetclassement` - Réinitialiser le classement",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "🛠️ Administration ELO",
+              value: [
+                "`!admin elo add <@user> <points>` - Ajouter des points ELO",
+                "`!admin elo remove <@user> <points>` - Retirer des points ELO",
+                "`!admin elo set <@user> <points>` - Définir un ELO précis",
+                "`!admin eloreset` - Préparer un reset complet de l'ELO",
+                "`!admin elo reset` - Alias de `!admin eloreset`",
+                "`!admin eloreset confirm` - Confirmer le reset ELO",
+              ].join("\n"),
+              inline: false,
+            },
+          ],
+          footer: "Page 1/3",
+        },
+        {
+          title: "🤖 Commandes du Bot",
+          description: "Page 2/3 • Outils d'administration",
+          fields: [
+            {
+              name: "👥 Utilisateurs et réponses auto",
+              value: [
+                "`!addwatch <@user>` - Ajouter un utilisateur surveillé",
+                "`!removewatch <@user>` - Retirer un utilisateur surveillé",
+                "`!setrandomuser <@user>` - Définir l'utilisateur cible des réponses random",
+                "`!removerandomuser` - Désactiver les réponses random ciblées",
+                "`!admin pauseglobal` - Activer ou mettre en pause les réponses globales",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "📝 Messages et templates",
+              value: [
+                "`!msg #channel <contenu>` - Envoyer un message rapidement",
+                "`!embed` - Créer un embed interactif",
+                "`!createtemplate <nom> <contenu>` - Créer un template",
+                "`!listtemplates` - Lister les templates",
+                "`!deletetemplate <nom>` - Supprimer un template",
+                "`!sendmessage` - Envoyer un template via sélecteur",
+                "`!sendmessage <nom> #channel` - Envoyer un template directement",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "🏷️ Reaction roles",
+              value: [
+                "`!rr setup` - Configurer un reaction role interactif",
+                "`!rr add <msgId> <emoji> @role` - Ajouter une réaction à un message",
+                "`!rr remove <msgId> <emoji>` - Retirer une réaction",
+                "`!rr list` - Lister les reaction roles",
+                "`!rr delete <msgId>` - Supprimer une config reaction role",
+              ].join("\n"),
+              inline: false,
+            },
+          ],
+          footer: "Page 2/3",
+        },
+        {
+          title: "🤖 Commandes du Bot",
+          description: "Page 3/3 • Slash commands et permissions",
+          fields: [
+            {
+              name: "💬 Slash commands `/team`",
+              value: [
+                "`/team create` - Créer une team",
+                "`/team add-player` - Ajouter un joueur à une team",
+                "`/team view` - Voir une team existante",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "🎯 Divers",
+              value: [
+                "`!bazouzou` - Envoyer un bazouzou aléatoire",
+                "`!loli` - Afficher cette aide complète",
+              ].join("\n"),
+              inline: false,
+            },
+            {
+              name: "🔐 Permissions",
+              value: [
+                "`Public` : `!elo`, `!stats`, `!bazouzou`, `!loli`, `/team view`",
+                "`Admin ou Arbitre` : toutes les commandes `!custom`, `!classement`, `!admin elo ...`, `!admin pauseglobal`",
+                "`Admin uniquement` : `!resetclassement`, `!admin eloreset`, `!admin elo reset`, `!admin eloreset confirm`, commandes templates/messages, `!rr ...`, watchlist, `/team create`, `/team add-player`",
+              ].join("\n"),
+              inline: false,
+            },
+          ],
+          footer: "Page 3/3",
+        },
+      ];
 
-      await message.reply({ embeds: [helpEmbed] });
+      const helpEmbeds = helpPages.map((page) =>
+        new EmbedBuilder()
+          .setTitle(page.title)
+          .setDescription(page.description)
+          .setColor("#00ff00")
+          .addFields(page.fields)
+          .setFooter({ text: page.footer })
+      );
+
+      await message.reply({ embeds: helpEmbeds });
       return;
     }
 
