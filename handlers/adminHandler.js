@@ -322,27 +322,8 @@ export class AdminHandler {
       const playerCount = await PlayerStats.countDocuments();
       const matchCount = await Match.countDocuments();
 
-      // Reset tous les PlayerStats
-      await PlayerStats.updateMany(
-        {},
-        {
-          $set: {
-            elo: 1000,
-            gamesPlayed: 0,
-            wins: 0,
-            losses: 0,
-            totalGames: 0,
-            avgOpponentCostWhenWin: 0,
-            avgOpponentCostWhenLose: 0,
-            winsByOpponentCost: new Map(),
-            lossesByOpponentCost: new Map(),
-            eloHistory: [],
-            lastUpdated: new Date(),
-          },
-        }
-      );
-
-      // Supprimer tous les matchs
+      // Supprimer toutes les stats et matchs (clean reset)
+      await PlayerStats.deleteMany({});
       await Match.deleteMany({});
 
       const successEmbed = new EmbedBuilder()
@@ -455,7 +436,7 @@ export class AdminHandler {
           { name: "ELO", value: `${playerStats.elo}`, inline: true },
           {
             name: "Parties Jouées",
-            value: `${playerStats.gamesPlayed}`,
+            value: `${playerStats.totalGames}`,
             inline: true,
           },
           { name: "Winrate", value: `${winrate}%`, inline: true },

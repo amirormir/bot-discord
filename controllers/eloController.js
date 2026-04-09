@@ -128,7 +128,6 @@ export class EloController {
           userId: player.userId,
           username: player.username,
           elo: player.elo || 1000,
-          gamesPlayed: 0,
         });
 
         Logger.info(
@@ -152,32 +151,59 @@ export class EloController {
   async updatePlayersElo(playersStats, eloCalculations, matchId) {
     const updatedPlayers = {};
 
-    // Mettre à jour l'équipe 1
-    for (const playerResult of eloCalculations.team1) {
+    // Compute average costs for opponent tracking
+    const team1AvgCost =
+      eloCalculations.team1.reduce((sum, p) => sum + (p.cost || 0), 0) /
+      eloCalculations.team1.length;
+    const team2AvgCost =
+      eloCalculations.team2.reduce((sum, p) => sum + (p.cost || 0), 0) /
+      eloCalculations.team2.length;
+
+    // Helper to update a single player
+    const updatePlayer = async (playerResult, opponentAvgCost) => {
       const playerStats = playersStats[playerResult.userId];
       const oldElo = playerStats.elo;
       const newElo = oldElo + playerResult.eloChange.change;
+      const isWin = playerResult.result === "win";
 
-      // Mettre à jour les statistiques
       playerStats.elo = newElo;
-      playerStats.gamesPlayed++;
       playerStats.totalGames++;
 
-      if (playerResult.result === "win") {
+      if (isWin) {
         playerStats.wins++;
       } else {
         playerStats.losses++;
       }
 
-      // Ajouter à l'historique Elo
+      // Opponent cost tracking
+      const costKey = Math.round(opponentAvgCost).toString();
+      if (isWin) {
+        const prevTotal =
+          playerStats.avgOpponentCostWhenWin * (playerStats.wins - 1);
+        playerStats.avgOpponentCostWhenWin =
+          (prevTotal + opponentAvgCost) / playerStats.wins;
+        playerStats.winsByOpponentCost.set(
+          costKey,
+          (playerStats.winsByOpponentCost.get(costKey) || 0) + 1
+        );
+      } else {
+        const prevTotal =
+          playerStats.avgOpponentCostWhenLose * (playerStats.losses - 1);
+        playerStats.avgOpponentCostWhenLose =
+          (prevTotal + opponentAvgCost) / playerStats.losses;
+        playerStats.lossesByOpponentCost.set(
+          costKey,
+          (playerStats.lossesByOpponentCost.get(costKey) || 0) + 1
+        );
+      }
+
+      // ELO history
       playerStats.eloHistory.push({
         elo: newElo,
         change: playerResult.eloChange.change,
         matchId,
         date: new Date(),
       });
-
-      // Limiter l'historique à 50 entrées
       if (playerStats.eloHistory.length > 50) {
         playerStats.eloHistory = playerStats.eloHistory.slice(-50);
       }
@@ -198,54 +224,16 @@ export class EloController {
           playerResult.eloChange.change > 0 ? "+" : ""
         }${playerResult.eloChange.change})`
       );
+    };
+
+    // Team 1 players (opponent = team 2)
+    for (const playerResult of eloCalculations.team1) {
+      await updatePlayer(playerResult, team2AvgCost);
     }
 
-    // Mettre à jour l'équipe 2
+    // Team 2 players (opponent = team 1)
     for (const playerResult of eloCalculations.team2) {
-      const playerStats = playersStats[playerResult.userId];
-      const oldElo = playerStats.elo;
-      const newElo = oldElo + playerResult.eloChange.change;
-
-      // Mettre à jour les statistiques
-      playerStats.elo = newElo;
-      playerStats.gamesPlayed++;
-      playerStats.totalGames++;
-
-      if (playerResult.result === "win") {
-        playerStats.wins++;
-      } else {
-        playerStats.losses++;
-      }
-
-      // Ajouter à l'historique Elo
-      playerStats.eloHistory.push({
-        elo: newElo,
-        change: playerResult.eloChange.change,
-        matchId,
-        date: new Date(),
-      });
-
-      // Limiter l'historique à 50 entrées
-      if (playerStats.eloHistory.length > 50) {
-        playerStats.eloHistory = playerStats.eloHistory.slice(-50);
-      }
-
-      playerStats.lastUpdated = new Date();
-      await playerStats.save();
-
-      updatedPlayers[playerResult.userId] = {
-        username: playerResult.username,
-        oldElo,
-        newElo,
-        change: playerResult.eloChange.change,
-        result: playerResult.result,
-      };
-
-      Logger.info(
-        `[ELO_CONTROLLER] ${playerResult.username}: ${oldElo} → ${newElo} (${
-          playerResult.eloChange.change > 0 ? "+" : ""
-        }${playerResult.eloChange.change})`
-      );
+      await updatePlayer(playerResult, team1AvgCost);
     }
 
     return updatedPlayers;
@@ -326,7 +314,6 @@ export class EloController {
         userId: playerStats.userId,
         username: playerStats.username,
         elo: playerStats.elo,
-        gamesPlayed: playerStats.gamesPlayed,
         wins: playerStats.wins,
         losses: playerStats.losses,
         totalGames: playerStats.totalGames,
@@ -334,7 +321,7 @@ export class EloController {
           playerStats.totalGames > 0
             ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
             : 0,
-        eloHistory: playerStats.eloHistory.slice(-10), // 10 dernières parties
+        eloHistory: playerStats.eloHistory.slice(-10),
         lastUpdated: playerStats.lastUpdated,
       };
     } catch (error) {
@@ -353,7 +340,7 @@ export class EloController {
   async getLeaderboard(limit = 50) {
     try {
       const players = await PlayerStats.find({})
-        .sort({ elo: -1, gamesPlayed: -1 })
+        .sort({ elo: -1, totalGames: -1 })
         .limit(limit);
 
       return players.map((player, index) => ({
@@ -361,9 +348,9 @@ export class EloController {
         userId: player.userId,
         username: player.username,
         elo: player.elo,
-        gamesPlayed: player.gamesPlayed,
         wins: player.wins,
         losses: player.losses,
+        totalGames: player.totalGames,
         winrate:
           player.totalGames > 0
             ? ((player.wins / player.totalGames) * 100).toFixed(1)

@@ -86,8 +86,8 @@ export class EloIntegration {
                 `[ELO_INTEGRATION] Elo récupéré depuis PlayerStats pour ${player.username}: ${elo}`
               );
             }
-            // Récupérer aussi gamesPlayed pour le calcul du K factor
-            const gamesPlayed = playerStats ? playerStats.gamesPlayed : 0;
+            // Récupérer totalGames pour le calcul du K factor
+            const gamesPlayed = playerStats ? playerStats.totalGames : 0;
 
             return {
               userId: player.userId,
@@ -116,8 +116,8 @@ export class EloIntegration {
                 `[ELO_INTEGRATION] Elo récupéré depuis PlayerStats pour ${player.username}: ${elo}`
               );
             }
-            // Récupérer aussi gamesPlayed pour le calcul du K factor
-            const gamesPlayed = playerStats ? playerStats.gamesPlayed : 0;
+            // Récupérer totalGames pour le calcul du K factor
+            const gamesPlayed = playerStats ? playerStats.totalGames : 0;
 
             return {
               userId: player.userId,

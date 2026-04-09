@@ -16,11 +16,6 @@ const playerStatsSchema = new mongoose.Schema({
     default: 1000, // Elo de départ
     min: 0,
   },
-  gamesPlayed: {
-    type: Number,
-    default: 0,
-  },
-  // Statistiques classiques (conservées pour compatibilité)
   wins: {
     type: Number,
     default: 0,

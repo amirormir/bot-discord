@@ -2,7 +2,6 @@ import { Logger } from "../utils/logger.js";
 import { Player } from "../models/Player.js";
 import { Queue } from "../models/Queue.js";
 import { PlayerStats } from "../models/PlayerStats.js";
-import { GameResult } from "../models/GameResult.js";
 import { TeamBuilder } from "../utils/teamBuilder.js";
 import { EloIntegration } from "../integration/eloIntegration.js";
 import {
@@ -99,7 +98,6 @@ export class CustomGameHandler {
           userId: interaction.user.id,
           username: interaction.user.username,
           elo: 1000,
-          gamesPlayed: 0,
         });
       }
 
@@ -385,14 +383,6 @@ export class CustomGameHandler {
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur vérification queue: ${error.message}`);
     }
-  }
-
-  async startRoleSelection(channel, queue) {
-    // Cette méthode n'est plus utilisée - supprimée
-  }
-
-  async startCostSelection(channel, queue) {
-    // Cette méthode n'est plus utilisée - supprimée
   }
 
   async buildTeams(channel, queue) {
@@ -1050,7 +1040,7 @@ export class CustomGameHandler {
             userId: userId,
             username: testPlayer.username,
             elo: testPlayer.elo,
-            gamesPlayed: Math.floor(Math.random() * 20), // 0-19 parties pour varier les K factors
+            totalGames: Math.floor(Math.random() * 20), // 0-19 parties pour varier les K factors
           });
         } else {
           playerStats.elo = testPlayer.elo;
@@ -1176,24 +1166,6 @@ export class CustomGameHandler {
       Logger.info(
         `[CUSTOM_GAME] Déclaration de victoire par ${interaction.user.tag} - Gagnant: ${winner}`
       );
-
-      // Sauvegarder le résultat de la partie
-      const gameResult = await GameResult.create({
-        gameId: `game_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        winner: winner,
-        team1: this.currentGameResult.team1,
-        team2: this.currentGameResult.team2,
-        costDifference: this.currentGameResult.costDifference,
-        endedBy: interaction.user.id,
-      });
-
-      Logger.info(
-        `[CUSTOM_GAME] Résultat sauvegardé avec ID: ${gameResult.gameId}`
-      );
-
-      // Mettre à jour les statistiques des joueurs (ancien système)
-      await this.updatePlayerStats(winnerTeam, loserTeam, true);
-      await this.updatePlayerStats(loserTeam, winnerTeam, false);
 
       // Créer l'embed de résultat
       const resultEmbed = new EmbedBuilder()
@@ -1385,108 +1357,6 @@ export class CustomGameHandler {
     return embed;
   }
 
-  async updatePlayerStats(team, opponentTeam, isWin) {
-    try {
-      const opponentCost = opponentTeam.averageCost;
-
-      Logger.info(
-        `[CUSTOM_GAME] Mise à jour stats pour équipe ${
-          isWin ? "gagnante" : "perdante"
-        } (${team.players.length} joueurs)`
-      );
-
-      for (const player of team.players) {
-        Logger.info(
-          `[CUSTOM_GAME] Traitement joueur: ${player.username} (${player.userId})`
-        );
-
-        // Trouver ou créer les statistiques du joueur
-        let playerStats = await PlayerStats.findOne({ userId: player.userId });
-
-        if (!playerStats) {
-          Logger.info(
-            `[CUSTOM_GAME] Création nouvelle fiche stats pour ${player.username}`
-          );
-          playerStats = await PlayerStats.create({
-            userId: player.userId,
-            username: player.username,
-            wins: 0,
-            losses: 0,
-            totalGames: 0,
-            avgOpponentCostWhenWin: 0,
-            avgOpponentCostWhenLose: 0,
-            winsByOpponentCost: new Map(),
-            lossesByOpponentCost: new Map(),
-          });
-        }
-
-        // Mettre à jour les statistiques manuellement pour éviter les problèmes avec les méthodes virtuelles
-        playerStats.totalGames++;
-
-        if (isWin) {
-          playerStats.wins++;
-          // Mettre à jour le coût moyen des adversaires quand on gagne
-          if (playerStats.wins === 1) {
-            playerStats.avgOpponentCostWhenWin = opponentCost;
-          } else {
-            const totalCostWhenWin =
-              playerStats.avgOpponentCostWhenWin * (playerStats.wins - 1) +
-              opponentCost;
-            playerStats.avgOpponentCostWhenWin =
-              totalCostWhenWin / playerStats.wins;
-          }
-
-          // Incrémenter le compteur de victoires pour ce coût d'adversaire (utiliser un entier)
-          const costKey = Math.round(opponentCost).toString(); // Arrondir à l'entier le plus proche
-          const currentWins = playerStats.winsByOpponentCost.get(costKey) || 0;
-          playerStats.winsByOpponentCost.set(costKey, currentWins + 1);
-
-          Logger.info(
-            `[CUSTOM_GAME] Victoire pour ${
-              player.username
-            } contre cost ${opponentCost.toFixed(2)} (clé: ${costKey})`
-          );
-        } else {
-          playerStats.losses++;
-          // Mettre à jour le coût moyen des adversaires quand on perd
-          if (playerStats.losses === 1) {
-            playerStats.avgOpponentCostWhenLose = opponentCost;
-          } else {
-            const totalCostWhenLose =
-              playerStats.avgOpponentCostWhenLose * (playerStats.losses - 1) +
-              opponentCost;
-            playerStats.avgOpponentCostWhenLose =
-              totalCostWhenLose / playerStats.losses;
-          }
-
-          // Incrémenter le compteur de défaites pour ce coût d'adversaire (utiliser un entier)
-          const costKey = Math.round(opponentCost).toString(); // Arrondir à l'entier le plus proche
-          const currentLosses =
-            playerStats.lossesByOpponentCost.get(costKey) || 0;
-          playerStats.lossesByOpponentCost.set(costKey, currentLosses + 1);
-
-          Logger.info(
-            `[CUSTOM_GAME] Défaite pour ${
-              player.username
-            } contre cost ${opponentCost.toFixed(2)} (clé: ${costKey})`
-          );
-        }
-
-        playerStats.lastUpdated = new Date();
-
-        // Sauvegarder les modifications
-        await playerStats.save();
-
-        Logger.info(
-          `[CUSTOM_GAME] Stats mises à jour pour ${player.username}: ${playerStats.wins}W/${playerStats.losses}L (${playerStats.totalGames} parties total)`
-        );
-      }
-    } catch (error) {
-      Logger.error(`[CUSTOM_GAME] Erreur mise à jour stats: ${error.message}`);
-      throw error; // Propager l'erreur pour la gestion en amont
-    }
-  }
-
   async resetLeaderboard(message) {
     try {
       // Vérifier que l'utilisateur est admin
@@ -1519,7 +1389,7 @@ export class CustomGameHandler {
     try {
       const playerStats = await PlayerStats.find({}).sort({
         elo: -1,
-        gamesPlayed: -1,
+        totalGames: -1,
       });
 
       Logger.info(
@@ -1569,8 +1439,7 @@ export class CustomGameHandler {
             : "0.0";
 
         leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
-        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
+        leaderboardText += `   🏆 Elo: **${stats.elo}** | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} parties\n`;
         leaderboardText += "\n";
       }
 
@@ -1652,33 +1521,49 @@ export class CustomGameHandler {
         return;
       }
 
-      // Calculer le winrate manuellement
+      // Calculer le winrate
       const winrate =
         playerStats.totalGames > 0
           ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
           : "0.0";
 
+      // Déterminer le rang
+      let rank = "🥉 Bronze";
+      let color = "#cd7f32";
+      if (playerStats.elo >= 1500) { rank = "🥇 Or"; color = "#ffd700"; }
+      else if (playerStats.elo >= 1300) { rank = "🥈 Argent"; color = "#c0c0c0"; }
+      else if (playerStats.elo >= 1100) { rank = "🥉 Bronze"; color = "#cd7f32"; }
+      else if (playerStats.elo < 900) { rank = "🔻 ELO Bas"; color = "#ff6b6b"; }
+      else { color = "#808080"; }
+
       const statsEmbed = new EmbedBuilder()
         .setTitle(`📊 Statistiques de ${playerStats.username}`)
-        .setColor("#00ff00")
+        .setDescription(`**${rank}**`)
+        .setColor(color)
         .addFields(
           {
-            name: "📈 Général",
-            value: `Parties: ${playerStats.totalGames}\nVictoires: ${playerStats.wins}\nDéfaites: ${playerStats.losses}\nWinrate: ${winrate}%`,
+            name: "🏆 ELO",
+            value: `${playerStats.elo}`,
             inline: true,
           },
           {
-            name: "🎯 Victoires",
-            value: `Cost moyen adversaires: ${playerStats.avgOpponentCostWhenWin.toFixed(
-              2
-            )}`,
+            name: "📈 Parties",
+            value: `${playerStats.totalGames}`,
             inline: true,
           },
           {
-            name: "💀 Défaites",
-            value: `Cost moyen adversaires: ${playerStats.avgOpponentCostWhenLose.toFixed(
-              2
-            )}`,
+            name: "📊 W/L",
+            value: `${playerStats.wins}W / ${playerStats.losses}L (${winrate}%)`,
+            inline: true,
+          },
+          {
+            name: "🎯 Cost moyen adversaires (V)",
+            value: `${playerStats.avgOpponentCostWhenWin.toFixed(2)}`,
+            inline: true,
+          },
+          {
+            name: "💀 Cost moyen adversaires (D)",
+            value: `${playerStats.avgOpponentCostWhenLose.toFixed(2)}`,
             inline: true,
           }
         )
@@ -1744,7 +1629,7 @@ export class CustomGameHandler {
 
       // Vérifier que la page est valide
       const playerStats = await PlayerStats.find({}).sort({
-        wins: -1,
+        elo: -1,
         totalGames: -1,
       });
       const totalPages = Math.ceil(playerStats.length / 5);
@@ -1774,7 +1659,7 @@ export class CustomGameHandler {
     try {
       const playerStats = await PlayerStats.find({}).sort({
         elo: -1,
-        gamesPlayed: -1,
+        totalGames: -1,
       });
 
       if (playerStats.length === 0) {
@@ -1824,8 +1709,7 @@ export class CustomGameHandler {
             : "0.0";
 
         leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   🏆 Elo: ${stats.elo}\n`;
-        leaderboardText += `   📊 ${stats.wins}W/${stats.losses}L (${winrate}%)\n`;
+        leaderboardText += `   🏆 Elo: **${stats.elo}** | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} parties\n`;
         leaderboardText += "\n";
       }
 
