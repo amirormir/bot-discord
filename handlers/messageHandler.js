@@ -2,6 +2,7 @@ import { Logger } from "../utils/logger.js";
 import { ImageModerationHandler } from "./imageModerationHandler.js";
 import { GlobalResponseHandler } from "./globalResponseHandler.js";
 import { MessageTemplateHandler } from "./messageTemplateHandler.js";
+import { ReactionRoleHandler } from "./reactionRoleHandler.js";
 import { CustomGameHandler } from "./customGameHandler.js";
 import { AdminHandler } from "./adminHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
@@ -76,6 +77,7 @@ export class MessageHandler {
     this.imageModerationHandler = new ImageModerationHandler();
     this.globalResponseHandler = new GlobalResponseHandler(this.adminHandler);
     this.messageTemplateHandler = new MessageTemplateHandler();
+    this.reactionRoleHandler = new ReactionRoleHandler();
     this.customGameHandler = new CustomGameHandler();
   }
 
@@ -145,6 +147,9 @@ export class MessageHandler {
       "!listtemplates",
       "!deletetemplate",
       "!sendmessage",
+      "!rr ",
+      "!msg ",
+      "!embed",
     ];
     const isOtherCommand = otherCommands.some((cmd) =>
       message.content.startsWith(cmd)
@@ -301,12 +306,26 @@ export class MessageHandler {
             inline: false,
           },
           {
-            name: "📝 Gestion des templates de messages",
+            name: "📝 Messages & Templates",
             value: [
+              "`!msg #channel <contenu>` - Envoyer un message rapidement",
+              "`!embed` - Créer un embed interactif (étape par étape)",
               "`!createtemplate <nom> <contenu>` - Créer un template",
               "`!listtemplates` - Lister tous les templates",
               "`!deletetemplate <nom>` - Supprimer un template",
-              "`!sendmessage` - Envoyer un template via sélecteur",
+              "`!sendmessage` - Envoyer un template (sélecteur)",
+              "`!sendmessage <nom> #channel` - Envoyer un template (direct)",
+            ].join("\n"),
+            inline: false,
+          },
+          {
+            name: "🏷️ Reaction Roles",
+            value: [
+              "`!rr setup` - Configurer un nouveau reaction role (interactif)",
+              "`!rr add <msgId> <emoji> @role` - Ajouter une réaction à un message existant",
+              "`!rr remove <msgId> <emoji>` - Retirer une réaction",
+              "`!rr list` - Lister tous les reaction roles",
+              "`!rr delete <msgId>` - Supprimer un reaction role",
             ].join("\n"),
             inline: false,
           },
@@ -371,13 +390,19 @@ export class MessageHandler {
       return;
     }
 
+    // Gestion des reaction roles
+    if (message.content.startsWith("!rr ")) {
+      await this.reactionRoleHandler.handleMessage(message);
+      return;
+    }
+
     // Gestion de la modération des images
     await this.imageModerationHandler.handleMessage(message);
 
     // Gestion des réponses globales et ADC
     await this.globalResponseHandler.handleMessage(message);
 
-    // Gestion des templates de messages
+    // Gestion des templates de messages et envoi (!msg, !embed, !sendmessage, !createtemplate, etc.)
     await this.messageTemplateHandler.handleMessage(message);
   }
 }

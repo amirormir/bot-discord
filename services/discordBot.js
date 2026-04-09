@@ -1,6 +1,7 @@
 import {
   Client,
   GatewayIntentBits,
+  Partials,
   SlashCommandBuilder,
   Routes,
   REST,
@@ -9,6 +10,7 @@ import { Logger } from "../utils/logger.js";
 import { CONFIG } from "../config/config.js";
 import { MessageHandler } from "../handlers/messageHandler.js";
 import { MessageTemplateHandler } from "../handlers/messageTemplateHandler.js";
+import { ReactionRoleHandler } from "../handlers/reactionRoleHandler.js";
 import { RichPresenceService } from "./richPresence.js";
 import { TeamCommandHandler } from "../handlers/teamCommandHandler.js";
 
@@ -19,11 +21,15 @@ export class DiscordBot {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers,
       ],
+      partials: [Partials.Message, Partials.Channel, Partials.Reaction],
     });
 
     this.messageHandler = new MessageHandler();
     this.messageTemplateHandler = new MessageTemplateHandler();
+    this.reactionRoleHandler = new ReactionRoleHandler();
     this.richPresence = new RichPresenceService();
     this.teamCommandHandler = new TeamCommandHandler();
     this.setupEventHandlers();
@@ -33,6 +39,8 @@ export class DiscordBot {
     this.client.on("ready", this.onReady.bind(this));
     this.client.on("messageCreate", this.onMessageCreate.bind(this));
     this.client.on("interactionCreate", this.onInteractionCreate.bind(this));
+    this.client.on("messageReactionAdd", this.onReactionAdd.bind(this));
+    this.client.on("messageReactionRemove", this.onReactionRemove.bind(this));
   }
 
   async onReady() {
@@ -228,6 +236,22 @@ export class DiscordBot {
       }
     } catch (error) {
       Logger.error(`Erreur interaction: ${error.message}`);
+    }
+  }
+
+  async onReactionAdd(reaction, user) {
+    try {
+      await this.reactionRoleHandler.handleReactionAdd(reaction, user);
+    } catch (error) {
+      Logger.error(`Erreur reaction add: ${error.message}`);
+    }
+  }
+
+  async onReactionRemove(reaction, user) {
+    try {
+      await this.reactionRoleHandler.handleReactionRemove(reaction, user);
+    } catch (error) {
+      Logger.error(`Erreur reaction remove: ${error.message}`);
     }
   }
 

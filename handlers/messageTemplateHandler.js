@@ -5,6 +5,7 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   ChannelType,
+  EmbedBuilder,
 } from "discord.js";
 
 export class MessageTemplateHandler {
@@ -264,14 +265,10 @@ export class MessageTemplateHandler {
       }
 
       // Envoyer le message dans le channel sélectionné
-      let messageContent = template.content;
-
-      // Ajouter @everyone si le message contient "everyone" ou "@everyone"
-      if (messageContent.toLowerCase().includes("everyone")) {
-        messageContent = "@everyone " + messageContent;
-      }
-
-      await channel.send(messageContent);
+      await channel.send({
+        content: template.content,
+        allowedMentions: { parse: ["everyone", "roles", "users"] },
+      });
 
       await interaction.update({
         content: `✅ Message envoyé dans ${channel} !`,
@@ -353,19 +350,45 @@ export class MessageTemplateHandler {
       return;
     }
 
-    // Commande pour envoyer un message via sélecteur
-    if (message.content === "!sendmessage") {
-      const templates = await this.listTemplates();
-      Logger.info(
-        `[TEMPLATE] Templates disponibles pour le menu: ${templates.length}`
-      );
-      templates.forEach((t) => {
-        Logger.info(`[TEMPLATE] Template menu: "${t.name}"`);
-      });
+    // Commande pour envoyer un message via sélecteur (ou direct: !sendmessage <nom> #channel)
+    if (message.content.startsWith("!sendmessage")) {
+      // Direct format: !sendmessage <templateName> #channel
+      const targetChannel = message.mentions.channels.first();
+      if (targetChannel) {
+        const parts = message.content.replace("!sendmessage ", "").trim();
+        const templateName = parts.split("<#")[0].trim();
 
+        if (!templateName) {
+          await message.reply(
+            "Usage : `!sendmessage <nom> #channel` ou `!sendmessage` pour le sélecteur"
+          );
+          return;
+        }
+
+        const template = await this.getTemplate(templateName);
+        if (!template) {
+          await message.reply(`❌ Template "${templateName}" non trouvé.`);
+          return;
+        }
+
+        let messageContent = template.content;
+        if (messageContent.toLowerCase().includes("everyone")) {
+          messageContent = "@everyone " + messageContent;
+        }
+
+        await targetChannel.send({
+          content: messageContent,
+          allowedMentions: { parse: ["everyone", "roles", "users"] },
+        });
+        await message.reply(`✅ Template **${templateName}** envoyé dans ${targetChannel} !`);
+        return;
+      }
+
+      // Selector mode (original behavior)
+      const templates = await this.listTemplates();
       if (templates.length === 0) {
         await message.reply(
-          "Aucun template disponible. Créez-en un avec !createtemplate"
+          "Aucun template disponible. Créez-en un avec `!createtemplate`"
         );
         return;
       }
@@ -376,6 +399,192 @@ export class MessageTemplateHandler {
         components: [row],
       });
       return;
+    }
+
+    // ─── Quick send: !msg #channel contenu ────────────────────────────
+    if (message.content.startsWith("!msg ")) {
+      const targetChannel = message.mentions.channels.first();
+      if (!targetChannel) {
+        await message.reply("Usage : `!msg #channel contenu du message`");
+        return;
+      }
+
+      // Get content after the channel mention
+      const content = message.content
+        .replace(/^!msg\s+<#\d+>\s*/, "")
+        .trim();
+
+      if (!content) {
+        await message.reply("❌ Veuillez fournir le contenu du message.");
+        return;
+      }
+
+      await targetChannel.send({
+        content,
+        allowedMentions: { parse: ["everyone", "roles", "users"] },
+      });
+      await message.reply(`✅ Message envoyé dans ${targetChannel} !`);
+      return;
+    }
+
+    // ─── Interactive Embed Builder: !embed ─────────────────────────────
+    if (message.content === "!embed") {
+      await this.handleEmbedBuilder(message);
+      return;
+    }
+  }
+
+  // ─── Interactive Embed Builder ──────────────────────────────────────
+
+  async handleEmbedBuilder(message) {
+    const userId = message.author.id;
+    const filter = (m) => m.author.id === userId;
+
+    const askStep = async (description) => {
+      await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setDescription(description)
+            .setColor("#e67e22")
+            .setFooter({ text: "Tapez 'cancel' pour annuler • Timeout: 60s" }),
+        ],
+      });
+      const collected = await message.channel.awaitMessages({
+        filter,
+        max: 1,
+        time: 60000,
+      });
+      if (collected.size === 0) return null;
+      const response = collected.first();
+      if (response.content.toLowerCase() === "cancel") return "cancel";
+      return response;
+    };
+
+    try {
+      // Step 1: Target channel
+      const channelMsg = await askStep(
+        "📨 **Embed Builder**\n\nMentionnez le **channel** de destination.\nExemple : `#general`"
+      );
+      if (!channelMsg || channelMsg === "cancel") {
+        await message.channel.send(
+          channelMsg === "cancel"
+            ? "❌ Annulé."
+            : "⏰ Timeout."
+        );
+        return;
+      }
+      const targetChannel = channelMsg.mentions.channels.first();
+      if (!targetChannel) {
+        await message.channel.send("❌ Channel invalide. Annulé.");
+        return;
+      }
+
+      // Step 2: Title
+      const titleMsg = await askStep(
+        "Entrez le **titre** de l'embed.\n(`skip` pour ignorer)"
+      );
+      if (!titleMsg || titleMsg === "cancel") {
+        await message.channel.send(titleMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      const title =
+        titleMsg.content.toLowerCase() === "skip" ? null : titleMsg.content;
+
+      // Step 3: Description
+      const descMsg = await askStep("Entrez la **description** de l'embed.");
+      if (!descMsg || descMsg === "cancel") {
+        await message.channel.send(descMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      const description = descMsg.content;
+
+      // Step 4: Color
+      const colorMsg = await askStep(
+        "Entrez la **couleur** (hex).\nExemple : `#FF0000`\n(`skip` pour la couleur par défaut)"
+      );
+      if (!colorMsg || colorMsg === "cancel") {
+        await message.channel.send(colorMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      let color = "#2ecc71";
+      if (colorMsg.content.toLowerCase() !== "skip") {
+        const hexMatch = colorMsg.content.match(/^#?([0-9a-fA-F]{6})$/);
+        if (hexMatch) {
+          color = `#${hexMatch[1]}`;
+        }
+      }
+
+      // Step 5: Image
+      const imageMsg = await askStep(
+        "Entrez l'**URL de l'image**.\n(`skip` pour ignorer)"
+      );
+      if (!imageMsg || imageMsg === "cancel") {
+        await message.channel.send(imageMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      const image =
+        imageMsg.content.toLowerCase() === "skip" ? null : imageMsg.content;
+
+      // Step 6: Footer
+      const footerMsg = await askStep(
+        "Entrez le **footer**.\n(`skip` pour ignorer)"
+      );
+      if (!footerMsg || footerMsg === "cancel") {
+        await message.channel.send(footerMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      const footer =
+        footerMsg.content.toLowerCase() === "skip" ? null : footerMsg.content;
+
+      // Step 7: Text content above embed
+      const contentMsg = await askStep(
+        "Entrez le **texte** au-dessus de l'embed.\n(`skip` pour aucun texte)\nVous pouvez utiliser `@everyone` ou `@here`."
+      );
+      if (!contentMsg || contentMsg === "cancel") {
+        await message.channel.send(contentMsg === "cancel" ? "❌ Annulé." : "⏰ Timeout.");
+        return;
+      }
+      const textContent =
+        contentMsg.content.toLowerCase() === "skip" ? null : contentMsg.content;
+
+      // Build embed
+      const embed = new EmbedBuilder().setDescription(description).setColor(color);
+      if (title) embed.setTitle(title);
+      if (image) embed.setImage(image);
+      if (footer) embed.setFooter({ text: footer });
+
+      // Preview
+      await message.channel.send({
+        content: "**Aperçu :**",
+        embeds: [embed],
+      });
+
+      const confirmMsg = await askStep(
+        "Envoyer ce message ? (`oui` / `non`)"
+      );
+      if (
+        !confirmMsg ||
+        confirmMsg === "cancel" ||
+        confirmMsg.content.toLowerCase() !== "oui"
+      ) {
+        await message.channel.send("❌ Envoi annulé.");
+        return;
+      }
+
+      // Send
+      const sendOptions = { embeds: [embed] };
+      if (textContent) {
+        sendOptions.content = textContent;
+        sendOptions.allowedMentions = {
+          parse: ["everyone", "roles", "users"],
+        };
+      }
+
+      await targetChannel.send(sendOptions);
+      await message.channel.send(`✅ Embed envoyé dans ${targetChannel} !`);
+    } catch (error) {
+      Logger.error(`[TEMPLATE] Erreur embed builder: ${error.message}`);
+      await message.channel.send("❌ Erreur lors de la création de l'embed.");
     }
   }
 }
