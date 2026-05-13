@@ -451,7 +451,7 @@ export class MessageHandler {
     // Gestion de la modération des images
     await this.imageModerationHandler.handleMessage(message);
 
-    // Gestion des réponses globales et ADC
+    // Gestion des réponses globales et bazouzou
     await this.globalResponseHandler.handleMessage(message);
 
     // Gestion des templates de messages et envoi (!msg, !embed, !sendmessage, !createtemplate, etc.)

@@ -17,7 +17,6 @@ ewa/
 ├── models/
 │   ├── WatchedUser.js               # Modèle des utilisateurs surveillés
 │   ├── RandomResponseUser.js        # Modèle de l'utilisateur random
-│   ├── AdcTrigger.js                # Modèle des déclencheurs ADC
 │   ├── MessageTemplate.js           # Modèle des templates de messages
 │   ├── Player.js                    # Modèle des joueurs 5v5
 │   ├── Queue.js                     # Modèle de la queue 5v5
@@ -172,7 +171,6 @@ npm start
 
 - `WatchedUser` : Utilisateurs surveillés pour la modération
 - `RandomResponseUser` : Utilisateur cible des réponses random
-- `AdcTrigger` : Configuration des déclencheurs ADC
 - `MessageTemplate` : Templates de messages
 - `Player` : Joueurs dans la queue 5v5
 - `Queue` : État de la queue 5v5

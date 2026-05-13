@@ -1,5 +1,4 @@
 import { Logger } from "../utils/logger.js";
-import { AdcTrigger } from "../models/AdcTrigger.js";
 import { BazouzouTrigger } from "../models/BazouzouTrigger.js";
 
 export class GlobalResponseHandler {
@@ -94,23 +93,6 @@ export class GlobalResponseHandler {
     }
   }
 
-  async getAdcConfig() {
-    let config = await AdcTrigger.findOne();
-    if (!config) {
-      config = await AdcTrigger.create({
-        userId: "324201004176375808",
-        triggers: ["adc", "ADC", "AD", "ad", "AD carry", "Ad carry"],
-        responses: [
-          "ENCORE LA FAUTE DES ADC",
-          "C'est jamais de la faute de la toplane GOAT",
-          "tu veux que je te trouve la moyenne des morts de tout les adc du discord goat?",
-          "oui oui , les adc oui",
-        ],
-      });
-    }
-    return config;
-  }
-
   async getBazouzouConfig() {
     let config = await BazouzouTrigger.findOne();
     if (!config) {
@@ -156,13 +138,6 @@ export class GlobalResponseHandler {
     return config;
   }
 
-  async getRandomAdcResponse() {
-    const config = await this.getAdcConfig();
-    return config.responses[
-      Math.floor(Math.random() * config.responses.length)
-    ];
-  }
-
   async getRandomBazouzouResponse() {
     const config = await this.getBazouzouConfig();
     return config.responses[
@@ -204,25 +179,6 @@ export class GlobalResponseHandler {
           }
         } catch (err) {
           Logger.error(`[GLOBAL] Erreur réponse globale: ${err.message}`);
-        }
-      }
-    }
-
-    // Vérifier les réponses ADC
-    const adcConfig = await this.getAdcConfig();
-    if (message.author.id === adcConfig.userId) {
-      const adcTriggers = adcConfig.triggers;
-      const hasAdcTrigger = adcTriggers.some((trigger) =>
-        message.content.toLowerCase().includes(trigger.toLowerCase())
-      );
-
-      if (hasAdcTrigger) {
-        const adcResponse = await this.getRandomAdcResponse();
-        Logger.info(`[ADC] Trigger ADC détecté, réponse: "${adcResponse}"`);
-        try {
-          await message.reply(adcResponse);
-        } catch (err) {
-          Logger.error(`[ADC] Erreur réponse ADC: ${err.message}`);
         }
       }
     }
