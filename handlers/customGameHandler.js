@@ -2,6 +2,7 @@ import { Logger } from "../utils/logger.js";
 import { Player } from "../models/Player.js";
 import { Queue } from "../models/Queue.js";
 import { PlayerStats } from "../models/PlayerStats.js";
+import { ActiveCustomGame } from "../models/ActiveCustomGame.js";
 import { TeamBuilder } from "../utils/teamBuilder.js";
 import { EloIntegration } from "../integration/eloIntegration.js";
 import { RatingService } from "../services/ratingService.js";
@@ -23,6 +24,56 @@ export class CustomGameHandler {
     this.currentGameResult = null; // Stocke le résultat de la partie en cours
     this.eloIntegration = new EloIntegration(); // Intégration du système rating
     this.ratingService = new RatingService();
+  }
+
+  _serializeActivePlayers(players) {
+    return players.map((player) => ({
+      userId: player.userId,
+      username: player.username,
+      selectedRole: player.selectedRole,
+      assignedRole: player.assignedRole,
+      selectedCost: player.selectedCost,
+      rating: player.rating,
+      rd: player.rd,
+      volatility: player.volatility,
+      tierLabel: player.tierLabel,
+    }));
+  }
+
+  async syncActiveCustomGame(status, overrides = {}) {
+    if (!this.currentGameResult) return;
+
+    const payload = {
+      key: "current",
+      status,
+      queueId: overrides.queueId ?? this.currentGameResult.queueId ?? null,
+      team1: {
+        players: this._serializeActivePlayers(this.currentGameResult.team1.players),
+        averageCost: this.currentGameResult.team1.averageCost,
+      },
+      team2: {
+        players: this._serializeActivePlayers(this.currentGameResult.team2.players),
+        averageCost: this.currentGameResult.team2.averageCost,
+      },
+      costDifference: this.currentGameResult.costDifference,
+      winner: overrides.winner ?? this.currentGameResult.winner ?? null,
+      mvpUserId: overrides.mvpUserId ?? this.currentGameResult.mvpUserId ?? null,
+      aceUserId: overrides.aceUserId ?? this.currentGameResult.aceUserId ?? null,
+      sourceMatchId: overrides.sourceMatchId ?? null,
+      startedAt: overrides.startedAt ?? this.currentGameResult.startedAt ?? new Date(),
+      finalizedAt: overrides.finalizedAt ?? null,
+      updatedAt: new Date(),
+    };
+
+    await ActiveCustomGame.findOneAndUpdate(
+      { key: "current" },
+      payload,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  }
+
+  async clearActiveCustomGame() {
+    await ActiveCustomGame.deleteOne({ key: "current" });
   }
 
   _displayLabel(playerStats) {
@@ -54,6 +105,7 @@ export class CustomGameHandler {
 
   async startCustomGame(message) {
     try {
+      await this.clearActiveCustomGame();
       const queue = await this.getOrCreateQueue();
       queue.isActive = true;
       queue.currentPhase = "waiting";
@@ -590,7 +642,14 @@ export class CustomGameHandler {
           averageCost: result.team2Cost,
         },
         costDifference: result.costDifference,
+        queueId: String(queue._id),
+        startedAt: new Date(),
       };
+
+      await this.syncActiveCustomGame("awaiting_winner", {
+        queueId: String(queue._id),
+        startedAt: this.currentGameResult.startedAt,
+      });
 
       queue.currentPhase = "completed";
       await queue.save();
@@ -617,6 +676,7 @@ export class CustomGameHandler {
 
       await Queue.updateMany({ isActive: true }, { isActive: false });
       await Player.deleteMany({});
+      await this.clearActiveCustomGame();
 
       this.currentQueue = null;
       this.queueMessage = null;
@@ -1170,6 +1230,11 @@ export class CustomGameHandler {
       this.currentGameResult.winner = winner;
       this.currentGameResult.mvpUserId = null;
       this.currentGameResult.aceUserId = null;
+      await this.syncActiveCustomGame("awaiting_performance", {
+        winner,
+        mvpUserId: null,
+        aceUserId: null,
+      });
 
       Logger.info(
         `[CUSTOM_GAME] Victoire déclarée par ${interaction.user.tag} → ${winner}`
@@ -1334,6 +1399,11 @@ export class CustomGameHandler {
       } else {
         this.currentGameResult.aceUserId = selectedUserId;
       }
+      await this.syncActiveCustomGame("awaiting_performance", {
+        winner: this.currentGameResult.winner ?? null,
+        mvpUserId: this.currentGameResult.mvpUserId ?? null,
+        aceUserId: this.currentGameResult.aceUserId ?? null,
+      });
       const components = this._buildPerformanceSelectionComponents();
       await interaction.update({ components });
       Logger.info(
@@ -1401,6 +1471,13 @@ export class CustomGameHandler {
         this.currentGameResult,
         interaction.user.id
       );
+      await this.syncActiveCustomGame("completed", {
+        winner: this.currentGameResult.winner ?? null,
+        mvpUserId: this.currentGameResult.mvpUserId ?? null,
+        aceUserId: this.currentGameResult.aceUserId ?? null,
+        sourceMatchId: eloResult.matchId,
+        finalizedAt: new Date(),
+      });
 
       const eloEmbed = this.createEloResultEmbed(eloResult);
       await interaction.editReply({
@@ -1410,6 +1487,8 @@ export class CustomGameHandler {
         embeds: [eloEmbed],
       });
 
+      await this.clearActiveCustomGame();
+      await this.clearActiveCustomGame();
       this.currentGameResult = null;
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur finalisation: ${error.message}`);
