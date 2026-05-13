@@ -149,14 +149,22 @@ router.put("/config", async (req, res) => {
       });
     }
 
-    // Valider les paramètres
+    // Valider les paramètres (Glicko-2)
     const validParams = [
-      "costToElo",
-      "lambda",
-      "kFactors",
-      "minChange",
-      "maxChange",
-      "personalPerformanceBonus",
+      "tau",
+      "defaultRating",
+      "defaultRD",
+      "defaultVolatility",
+      "minRD",
+      "maxRD",
+      "displayMin",
+      "displayMax",
+      "decayC",
+      "decayGracePeriodDays",
+      "decayPeriodDays",
+      "leaderboardMinGames",
+      "leaderboardMaxRD",
+      "leaderboardDropRD",
     ];
 
     const invalidParams = Object.keys(config).filter(

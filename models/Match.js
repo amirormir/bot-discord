@@ -1,64 +1,57 @@
 import mongoose from "mongoose";
 
+const playerSnapshotSchema = {
+  userId: String,
+  username: String,
+  ratingBefore: Number,
+  ratingAfter: Number,
+  rdBefore: Number,
+  rdAfter: Number,
+  volatilityBefore: Number,
+  volatilityAfter: Number,
+  ratingDelta: Number,
+  displayBefore: Number,
+  displayAfter: Number,
+  displayDelta: Number,
+  cost: Number,
+  role: String,
+  result: { type: String, enum: ["win", "loss"] },
+  performanceRole: { type: String, enum: ["MVP", "ACE", null], default: null },
+};
+
 const matchSchema = new mongoose.Schema({
   matchId: {
     type: String,
     required: true,
     unique: true,
   },
-  // Équipes
   team1: {
-    players: [
-      {
-        userId: String,
-        username: String,
-        elo: Number,
-        cost: Number,
-        role: String,
-      },
-    ],
-    averageElo: Number,
+    players: [playerSnapshotSchema],
+    averageRating: Number,
+    averageRD: Number,
     averageCost: Number,
   },
   team2: {
-    players: [
-      {
-        userId: String,
-        username: String,
-        elo: Number,
-        cost: Number,
-        role: String,
-      },
-    ],
-    averageElo: Number,
+    players: [playerSnapshotSchema],
+    averageRating: Number,
+    averageRD: Number,
     averageCost: Number,
   },
-  // Résultat
   winner: {
     type: String,
     enum: ["team1", "team2"],
     required: true,
   },
-  // Métadonnées
+  mvpUserId: { type: String, default: null },
+  aceUserId: { type: String, default: null },
   duration: {
-    type: Number, // en minutes
+    type: Number,
     default: null,
   },
-  // Facteurs modulateurs optionnels
   victoryMargin: {
-    type: Number, // différence de score, etc.
+    type: Number,
     default: null,
   },
-  // Calculs Elo
-  eloCalculations: {
-    team1Expected: Number,
-    team2Expected: Number,
-    team1Change: Number,
-    team2Change: Number,
-    kFactor: Number,
-    lambda: Number, // poids entre Elo et Cost
-  },
-  // Timestamps
   createdAt: {
     type: Date,
     default: Date.now,
@@ -68,12 +61,11 @@ const matchSchema = new mongoose.Schema({
     default: Date.now,
   },
   resolvedBy: {
-    type: String, // userId de l'admin qui a résolu le match
+    type: String,
     required: true,
   },
 });
 
-// Index pour les requêtes fréquentes
 matchSchema.index({ matchId: 1 });
 matchSchema.index({ createdAt: -1 });
 matchSchema.index({ "team1.players.userId": 1 });

@@ -4,6 +4,8 @@ import { Queue } from "../models/Queue.js";
 import { PlayerStats } from "../models/PlayerStats.js";
 import { TeamBuilder } from "../utils/teamBuilder.js";
 import { EloIntegration } from "../integration/eloIntegration.js";
+import { RatingService } from "../services/ratingService.js";
+import { tierColor, formatTier } from "../services/tiers.js";
 import {
   EmbedBuilder,
   ActionRowBuilder,
@@ -19,7 +21,27 @@ export class CustomGameHandler {
     this.costSelectionTimeouts = new Map();
     this.queueMessage = null; // Ajout de cette propriété
     this.currentGameResult = null; // Stocke le résultat de la partie en cours
-    this.eloIntegration = new EloIntegration(); // Intégration du système Elo
+    this.eloIntegration = new EloIntegration(); // Intégration du système rating
+    this.ratingService = new RatingService();
+  }
+
+  _displayLabel(playerStats) {
+    if (!playerStats) return "—";
+    const score = this.ratingService.getDisplayScore(playerStats);
+    const tier = this.ratingService.getTier(playerStats);
+    if (tier.tier === "Placements") {
+      return `Placements (${tier.placementsRemaining} restantes)`;
+    }
+    return `${tier.tier}${tier.subDivision ? " " + tier.subDivision : ""} (${score}/100)`;
+  }
+
+  /** True iff the member can act as referee (admin or "arbitre" role). */
+  _isReferee(member) {
+    if (!member) return false;
+    if (member.permissions?.has?.("Administrator")) return true;
+    return member.roles?.cache?.some?.(
+      (role) => role.name.toLowerCase() === "arbitre"
+    ) ?? false;
   }
 
   async getOrCreateQueue() {
@@ -94,10 +116,11 @@ export class CustomGameHandler {
         userId: interaction.user.id,
       });
       if (!playerStats) {
+        const defaults = this.ratingService.defaultPlayerFields();
         playerStats = await PlayerStats.create({
           userId: interaction.user.id,
           username: interaction.user.username,
-          elo: 1000,
+          ...defaults,
         });
       }
 
@@ -482,22 +505,19 @@ export class CustomGameHandler {
         .setTimestamp();
 
       // Créer un embed détaillé avec tous les choix
-      // Récupérer les Elo des joueurs pour l'affichage
-      const team1WithElo = await Promise.all(
-        result.team1.map(async (p) => {
-          const playerStats = await PlayerStats.findOne({ userId: p.userId });
-          const elo = playerStats ? playerStats.elo : 1000;
-          return { ...p, elo };
-        })
-      );
+      // Récupérer les ratings + tier des joueurs pour l'affichage
+      const enrichWithRating = async (p) => {
+        const playerStats = await PlayerStats.findOne({ userId: p.userId });
+        const defaults = this.ratingService.defaultPlayerFields();
+        const rating = playerStats ? playerStats.rating : defaults.rating;
+        const rd = playerStats ? playerStats.rd : defaults.rd;
+        const volatility = playerStats ? playerStats.volatility : defaults.volatility;
+        const tierLabel = this._displayLabel(playerStats);
+        return { ...p, rating, rd, volatility, tierLabel };
+      };
 
-      const team2WithElo = await Promise.all(
-        result.team2.map(async (p) => {
-          const playerStats = await PlayerStats.findOne({ userId: p.userId });
-          const elo = playerStats ? playerStats.elo : 1000;
-          return { ...p, elo };
-        })
-      );
+      const team1WithRating = await Promise.all(result.team1.map(enrichWithRating));
+      const team2WithRating = await Promise.all(result.team2.map(enrichWithRating));
 
       const detailsEmbed = new EmbedBuilder()
         .setTitle("📋 Détails des Choix")
@@ -506,20 +526,20 @@ export class CustomGameHandler {
         .addFields(
           {
             name: "🔵 Équipe 1",
-            value: team1WithElo
+            value: team1WithRating
               .map(
                 (p) =>
-                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - Elo ${p.elo})`
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - ${p.tierLabel})`
               )
               .join("\n"),
             inline: false,
           },
           {
             name: "🔴 Équipe 2",
-            value: team2WithElo
+            value: team2WithRating
               .map(
                 (p) =>
-                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - Elo ${p.elo})`
+                  `<@${p.userId}>: **${p.selectedRole}** → **${p.assignedRole}** (Niveau ${p.selectedCost} - ${p.tierLabel})`
               )
               .join("\n"),
             inline: false,
@@ -559,14 +579,14 @@ export class CustomGameHandler {
         components: [buttonRow],
       });
 
-      // Stocker le résultat de la partie en cours avec les Elos
+      // Stocker le résultat de la partie en cours avec les ratings
       this.currentGameResult = {
         team1: {
-          players: team1WithElo, // Utiliser les joueurs avec Elo
+          players: team1WithRating,
           averageCost: result.team1Cost,
         },
         team2: {
-          players: team2WithElo, // Utiliser les joueurs avec Elo
+          players: team2WithRating,
           averageCost: result.team2Cost,
         },
         costDifference: result.costDifference,
@@ -701,13 +721,12 @@ export class CustomGameHandler {
         .setColor(queue.isActive ? "#00ff00" : "#ff0000")
         .setTimestamp();
 
-      // Ajouter les joueurs complets avec leur Elo
+      // Ajouter les joueurs complets avec leur tier
       if (completePlayers.length > 0) {
         const completeList = await Promise.all(
           completePlayers.map(async (p) => {
             const playerStats = await PlayerStats.findOne({ userId: p.userId });
-            const elo = playerStats ? playerStats.elo : 1000;
-            return `• ${p.username} (${p.selectedRole} - Niveau ${p.selectedCost}) - Elo: ${elo}`;
+            return `• ${p.username} (${p.selectedRole} - Niveau ${p.selectedCost}) - ${this._displayLabel(playerStats)}`;
           })
         );
 
@@ -998,14 +1017,15 @@ export class CustomGameHandler {
         for (let j = 0; j < 2; j++) {
           const role = requiredRoles[i];
           const randomCost = Math.floor(Math.random() * 5) + 1; // 1-5
-          // Elo aléatoire entre 900 et 1100
-          const randomElo = Math.floor(Math.random() * 201) + 900; // 900-1100
+          const randomRating = Math.floor(Math.random() * 401) + 800; // 800-1200
+          const randomRD = Math.floor(Math.random() * 120) + 80; // 80-200
 
           testPlayers.push({
             username: `TestPlayer${testPlayers.length + 1}`,
             selectedRole: role,
             selectedCost: randomCost,
-            elo: randomElo,
+            rating: randomRating,
+            rd: randomRD,
           });
           roleCounts[role]++;
         }
@@ -1019,12 +1039,10 @@ export class CustomGameHandler {
       const baseTimestamp = Date.now();
       for (let i = 0; i < testPlayers.length; i++) {
         const testPlayer = testPlayers[i];
-        // Générer un userId unique pour chaque joueur
         const userId = `test_${baseTimestamp}_${i}_${Math.random()
           .toString(36)
           .substr(2, 9)}`;
 
-        // Créer le joueur dans la queue
         await Player.create({
           userId: userId,
           username: testPlayer.username,
@@ -1033,42 +1051,44 @@ export class CustomGameHandler {
           selectedCost: testPlayer.selectedCost,
         });
 
-        // Créer ou mettre à jour les PlayerStats avec l'Elo aléatoire
+        const games = Math.floor(Math.random() * 20);
         let playerStats = await PlayerStats.findOne({ userId: userId });
         if (!playerStats) {
           playerStats = await PlayerStats.create({
             userId: userId,
             username: testPlayer.username,
-            elo: testPlayer.elo,
-            totalGames: Math.floor(Math.random() * 20), // 0-19 parties pour varier les K factors
+            rating: testPlayer.rating,
+            rd: testPlayer.rd,
+            volatility: 0.06,
+            gamesPlayed: games,
+            totalGames: games,
           });
         } else {
-          playerStats.elo = testPlayer.elo;
+          playerStats.rating = testPlayer.rating;
+          playerStats.rd = testPlayer.rd;
           await playerStats.save();
         }
 
         Logger.info(
-          `[CUSTOM_GAME] Joueur test créé: ${testPlayer.username} - Elo: ${testPlayer.elo}, Cost: ${testPlayer.selectedCost}, Role: ${testPlayer.selectedRole}`
+          `[CUSTOM_GAME] Joueur test créé: ${testPlayer.username} - Rating: ${testPlayer.rating} (RD ${testPlayer.rd}), Cost: ${testPlayer.selectedCost}, Role: ${testPlayer.selectedRole}`
         );
       }
 
       Logger.info(
-        `[CUSTOM_GAME] 10 joueurs de test avec Elos aléatoires créés par ${message.author.tag}`
+        `[CUSTOM_GAME] 10 joueurs de test créés par ${message.author.tag}`
       );
 
-      // Mettre à jour l'embed
       await this.updateQueueEmbed(message.channel, queue);
 
-      // Créer un embed récapitulatif avec les Elos
       const summaryEmbed = new EmbedBuilder()
         .setTitle("✅ 10 Joueurs de Test Créés")
         .setDescription(
-          "Les joueurs ont été créés avec des Elos aléatoires entre 900 et 1100.\nLes équipes vont se construire automatiquement."
+          "Les joueurs ont été créés avec des ratings aléatoires entre 800 et 1200.\nLes équipes vont se construire automatiquement."
         )
         .addFields(
-          testPlayers.map((p, index) => ({
+          testPlayers.map((p) => ({
             name: `${p.username}`,
-            value: `Elo: **${p.elo}** | Cost: ${p.selectedCost} | Role: ${p.selectedRole}`,
+            value: `Rating: **${p.rating}** (RD ${p.rd}) | Cost: ${p.selectedCost} | Role: ${p.selectedRole}`,
             inline: true,
           }))
         )
@@ -1121,26 +1141,17 @@ export class CustomGameHandler {
   }
 
   async handleGameResult(interaction) {
-    // RÉPONDRE IMMÉDIATEMENT avec deferReply pour éviter l'expiration
     let hasReplied = false;
     try {
       await interaction.deferReply();
       hasReplied = true;
-      Logger.info(`[CUSTOM_GAME] Interaction différée avec succès`);
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur defer: ${error.message}`);
-      // Si defer échoue, l'interaction a probablement expiré
       return;
     }
 
     try {
-      // Vérifier que l'utilisateur est admin ou a le rôle "arbitre"
-      const isAdmin = interaction.member.permissions.has("Administrator");
-      const hasArbitreRole = interaction.member.roles.cache.some(
-        (role) => role.name.toLowerCase() === "arbitre"
-      );
-
-      if (!isAdmin && !hasArbitreRole) {
+      if (!this._isReferee(interaction.member)) {
         await interaction.editReply({
           content:
             "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent déclarer le gagnant d'une partie.",
@@ -1156,38 +1167,30 @@ export class CustomGameHandler {
       }
 
       const winner = interaction.customId === "team1_win" ? "team1" : "team2";
-      const winnerTeam = this.currentGameResult[winner];
-      const loserTeam =
-        this.currentGameResult[winner === "team1" ? "team2" : "team1"];
-
-      // Ajouter le winner au currentGameResult pour le système Elo
       this.currentGameResult.winner = winner;
+      this.currentGameResult.mvpUserId = null;
+      this.currentGameResult.aceUserId = null;
 
       Logger.info(
-        `[CUSTOM_GAME] Déclaration de victoire par ${interaction.user.tag} - Gagnant: ${winner}`
+        `[CUSTOM_GAME] Victoire déclarée par ${interaction.user.tag} → ${winner}`
       );
 
-      // Créer l'embed de résultat
       const resultEmbed = new EmbedBuilder()
         .setTitle("🏆 Résultat de la Partie")
         .setDescription(
-          `**${
-            winner === "team1" ? "🔵 Équipe 1" : "🔴 Équipe 2"
-          }** remporte la victoire !`
+          `**${winner === "team1" ? "🔵 Équipe 1" : "🔴 Équipe 2"}** remporte la victoire !\n\n` +
+            `**Arbitre** : sélectionne un **MVP** (équipe gagnante) et un **ACE** (équipe perdante), puis clique sur **Confirmer**.\n` +
+            `Tu peux aussi cliquer sur **Passer** pour appliquer le rating sans bonus.`
         )
         .addFields(
           {
             name: "🔵 Équipe 1",
-            value: `Cost moyen: ${this.currentGameResult.team1.averageCost.toFixed(
-              2
-            )}`,
+            value: `Cost moyen: ${this.currentGameResult.team1.averageCost.toFixed(2)}`,
             inline: true,
           },
           {
             name: "🔴 Équipe 2",
-            value: `Cost moyen: ${this.currentGameResult.team2.averageCost.toFixed(
-              2
-            )}`,
+            value: `Cost moyen: ${this.currentGameResult.team2.averageCost.toFixed(2)}`,
             inline: true,
           },
           {
@@ -1199,63 +1202,16 @@ export class CustomGameHandler {
         .setColor(winner === "team1" ? "#0066ff" : "#ff0000")
         .setTimestamp();
 
-      // Mettre à jour la réponse avec le résultat
+      const components = this._buildPerformanceSelectionComponents();
+
       await interaction.editReply({
-        content: "✅ Résultat enregistré !",
+        content: "✅ Victoire enregistrée. Sélection MVP / ACE en attente.",
         embeds: [resultEmbed],
+        components,
       });
-      Logger.info(`[CUSTOM_GAME] Réponse mise à jour avec succès`);
-
-      // Intégrer le système Elo APRÈS la réponse de l'interaction
-      try {
-        Logger.info(`[CUSTOM_GAME] Début résolution Elo pour match: ${winner}`);
-        Logger.info(
-          `[CUSTOM_GAME] Données du match:`,
-          JSON.stringify(this.currentGameResult, null, 2)
-        );
-
-        const eloResult = await this.eloIntegration.resolveMatchWithElo(
-          this.currentGameResult,
-          interaction.user.id
-        );
-
-        Logger.info(
-          `[CUSTOM_GAME] Résultat Elo reçu:`,
-          JSON.stringify(eloResult, null, 2)
-        );
-
-        // Afficher les changements d'Elo dans l'embed
-        const eloEmbed = this.createEloResultEmbed(eloResult);
-        Logger.info(`[CUSTOM_GAME] Envoi embed changements Elo`);
-        await interaction.followUp({ embeds: [eloEmbed] });
-      } catch (error) {
-        Logger.error(`[CUSTOM_GAME] Erreur système Elo: ${error.message}`);
-        Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
-
-        // Envoyer un message d'erreur pour debug
-        try {
-          await interaction.followUp({
-            content: `❌ Erreur système Elo: ${error.message}`,
-            ephemeral: true,
-          });
-        } catch (followUpError) {
-          Logger.warning(
-            `[CUSTOM_GAME] Impossible d'envoyer le followUp d'erreur Elo: ${followUpError.message}`
-          );
-        }
-      }
-
-      // Réinitialiser le résultat de la partie en cours
-      this.currentGameResult = null;
-
-      Logger.info(
-        `[CUSTOM_GAME] Partie terminée - Gagnant: ${winner} par ${interaction.user.tag}`
-      );
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur gestion résultat: ${error.message}`);
       Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
-      
-      // Mettre à jour la réponse avec l'erreur
       if (hasReplied) {
         try {
           await interaction.editReply({
@@ -1270,88 +1226,299 @@ export class CustomGameHandler {
     }
   }
 
-  createEloResultEmbed(eloResult) {
+  /**
+   * Build the MVP / ACE select menus + Confirm / Skip buttons based on
+   * the current game result. Returns the array of ActionRows ready to
+   * be attached to the result message.
+   */
+  _buildPerformanceSelectionComponents() {
+    const winnerKey = this.currentGameResult.winner;
+    const loserKey = winnerKey === "team1" ? "team2" : "team1";
+    const winners = this.currentGameResult[winnerKey].players;
+    const losers = this.currentGameResult[loserKey].players;
+    const mvpUserId = this.currentGameResult.mvpUserId;
+    const aceUserId = this.currentGameResult.aceUserId;
+
+    const truncate = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + "…" : s || "Joueur");
+
+    const mvpMenu = new StringSelectMenuBuilder()
+      .setCustomId("mvp_select")
+      .setPlaceholder(
+        mvpUserId
+          ? `🌟 MVP : ${truncate(winners.find((p) => p.userId === mvpUserId)?.username, 90)}`
+          : "🌟 Choisir le MVP (équipe gagnante) — +10% rating"
+      )
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        winners.map((p) => ({
+          label: truncate(p.username, 100),
+          value: p.userId,
+          description: `${p.assignedRole || p.selectedRole || ""}`.slice(0, 100) || undefined,
+          default: p.userId === mvpUserId,
+          emoji: p.userId === mvpUserId ? "🌟" : undefined,
+        }))
+      );
+
+    const aceMenu = new StringSelectMenuBuilder()
+      .setCustomId("ace_select")
+      .setPlaceholder(
+        aceUserId
+          ? `💀 ACE : ${truncate(losers.find((p) => p.userId === aceUserId)?.username, 90)}`
+          : "💀 Choisir l'ACE (équipe perdante) — -10% de perte"
+      )
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        losers.map((p) => ({
+          label: truncate(p.username, 100),
+          value: p.userId,
+          description: `${p.assignedRole || p.selectedRole || ""}`.slice(0, 100) || undefined,
+          default: p.userId === aceUserId,
+          emoji: p.userId === aceUserId ? "💀" : undefined,
+        }))
+      );
+
+    const confirmBtn = new ButtonBuilder()
+      .setCustomId("confirm_match_result")
+      .setLabel("Confirmer")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("✅");
+
+    const skipBtn = new ButtonBuilder()
+      .setCustomId("skip_mvp_ace")
+      .setLabel("Passer (pas de MVP / ACE)")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("⏭️");
+
+    return [
+      new ActionRowBuilder().addComponents(mvpMenu),
+      new ActionRowBuilder().addComponents(aceMenu),
+      new ActionRowBuilder().addComponents(confirmBtn, skipBtn),
+    ];
+  }
+
+  /**
+   * Handles MVP select menu interactions. Only the referee may pick.
+   */
+  async handleMvpSelection(interaction) {
+    await this._handlePerformanceSelection(interaction, "mvp");
+  }
+
+  /**
+   * Handles ACE select menu interactions. Only the referee may pick.
+   */
+  async handleAceSelection(interaction) {
+    await this._handlePerformanceSelection(interaction, "ace");
+  }
+
+  async _handlePerformanceSelection(interaction, kind) {
+    try {
+      if (!this._isReferee(interaction.member)) {
+        await interaction.reply({
+          content: "❌ Seul l'arbitre peut désigner le MVP / ACE.",
+          ephemeral: true,
+        });
+        return;
+      }
+      if (!this.currentGameResult || !this.currentGameResult.winner) {
+        await interaction.reply({
+          content: "❌ Aucune partie en attente de validation.",
+          ephemeral: true,
+        });
+        return;
+      }
+      const selectedUserId = interaction.values?.[0];
+      if (kind === "mvp") {
+        this.currentGameResult.mvpUserId = selectedUserId;
+      } else {
+        this.currentGameResult.aceUserId = selectedUserId;
+      }
+      const components = this._buildPerformanceSelectionComponents();
+      await interaction.update({ components });
+      Logger.info(
+        `[CUSTOM_GAME] ${kind.toUpperCase()} sélectionné par ${interaction.user.tag}: ${selectedUserId}`
+      );
+    } catch (error) {
+      Logger.error(
+        `[CUSTOM_GAME] Erreur sélection ${kind}: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Finalize the match: apply rating (with MVP / ACE modifiers if set)
+   * and post the rating-change embed. Triggered by Confirm or Skip.
+   */
+  async finalizeMatchResult(interaction) {
+    let deferred = false;
+    try {
+      await interaction.deferReply();
+      deferred = true;
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur defer finalize: ${error.message}`);
+      return;
+    }
+
+    try {
+      if (!this._isReferee(interaction.member)) {
+        await interaction.editReply({
+          content:
+            "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent finaliser une partie.",
+        });
+        return;
+      }
+      if (!this.currentGameResult || !this.currentGameResult.winner) {
+        await interaction.editReply({
+          content: "❌ Aucune partie en attente de validation.",
+        });
+        return;
+      }
+
+      const isSkip = interaction.customId === "skip_mvp_ace";
+      if (isSkip) {
+        this.currentGameResult.mvpUserId = null;
+        this.currentGameResult.aceUserId = null;
+      }
+
+      Logger.info(
+        `[CUSTOM_GAME] Finalisation par ${interaction.user.tag} | winner=${this.currentGameResult.winner} mvp=${this.currentGameResult.mvpUserId} ace=${this.currentGameResult.aceUserId} skip=${isSkip}`
+      );
+
+      // Désactiver les composants de l'ancien message pour éviter une
+      // double finalisation.
+      try {
+        if (interaction.message) {
+          await interaction.message.edit({ components: [] });
+        }
+      } catch (editErr) {
+        Logger.warning(
+          `[CUSTOM_GAME] Impossible de retirer les composants: ${editErr.message}`
+        );
+      }
+
+      const eloResult = await this.eloIntegration.resolveMatchWithElo(
+        this.currentGameResult,
+        interaction.user.id
+      );
+
+      const eloEmbed = this.createEloResultEmbed(eloResult);
+      await interaction.editReply({
+        content: isSkip
+          ? "✅ Match finalisé sans MVP / ACE."
+          : `✅ Match finalisé. MVP / ACE désigné par ${interaction.user.tag}.`,
+        embeds: [eloEmbed],
+      });
+
+      this.currentGameResult = null;
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur finalisation: ${error.message}`);
+      Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+      if (deferred) {
+        try {
+          await interaction.editReply({
+            content: `❌ Erreur lors de la finalisation: ${error.message}`,
+          });
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+  }
+
+  /**
+   * Cancel the current pending match. Only admins / arbitres may do this —
+   * before this check, any player could click "Annuler" and silently wipe
+   * the in-memory match state, forcing the points to be entered by hand.
+   */
+  async cancelGame(interaction) {
+    try {
+      if (!this._isReferee(interaction.member)) {
+        await interaction.reply({
+          content:
+            "❌ Seuls les administrateurs et les utilisateurs avec le rôle **Arbitre** peuvent annuler une partie.",
+          ephemeral: true,
+        });
+        return;
+      }
+      if (!this.currentGameResult) {
+        await interaction.reply({
+          content: "❌ Aucune partie à annuler.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      this.currentGameResult = null;
+
+      try {
+        if (interaction.message) {
+          await interaction.message.edit({ components: [] });
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      await interaction.reply({
+        content: `❌ Partie annulée par ${interaction.user.tag}. Aucun rating n'a été appliqué.`,
+      });
+      Logger.info(`[CUSTOM_GAME] Partie annulée par ${interaction.user.tag}`);
+    } catch (error) {
+      Logger.error(`[CUSTOM_GAME] Erreur annulation: ${error.message}`);
+    }
+  }
+
+  createEloResultEmbed(ratingResult) {
     const embed = new EmbedBuilder()
-      .setTitle("🏆 Changements d'Elo")
+      .setTitle("🏆 Changements de Rating")
       .setColor("#ffd700")
       .setTimestamp();
 
-    // Log pour diagnostic
-    Logger.info(
-      `[CUSTOM_GAME] Création embed Elo - Total joueurs: ${
-        Object.keys(eloResult.updatedPlayers).length
-      }`
-    );
-    Object.values(eloResult.updatedPlayers).forEach((player) => {
-      Logger.info(
-        `[CUSTOM_GAME] Joueur: ${player.username}, Result: ${player.result}, Change: ${player.change}`
-      );
-    });
-
-    // Séparer les gagnants et les perdants
-    const winners = Object.values(eloResult.updatedPlayers).filter(
+    const winners = Object.values(ratingResult.updatedPlayers).filter(
       (p) => p.result === "win"
     );
-    const losers = Object.values(eloResult.updatedPlayers).filter(
-      (p) => p.result === "lose"
+    const losers = Object.values(ratingResult.updatedPlayers).filter(
+      (p) => p.result === "loss"
     );
 
-    Logger.info(
-      `[CUSTOM_GAME] Gagnants trouvés: ${winners.length}, Perdants trouvés: ${losers.length}`
-    );
+    const formatLine = (player) => {
+      const delta = player.displayDelta;
+      const sign = delta >= 0 ? "+" : "";
+      const tierLabel = player.tier && player.tier.tier !== "Placements"
+        ? `${player.tier.tier}${player.tier.subDivision ? " " + player.tier.subDivision : ""}`
+        : `Placements (${player.tier?.placementsRemaining ?? 0})`;
+      const badge =
+        player.performanceRole === "MVP"
+          ? "🌟 **MVP** "
+          : player.performanceRole === "ACE"
+          ? "💀 **ACE** "
+          : "";
+      return `${badge}**${player.username}**: ${player.displayBefore} → ${player.displayAfter} (${sign}${delta}) · ${tierLabel}`;
+    };
 
-    // Affichage des gagnants
     if (winners.length > 0) {
-      const winnersText = winners
-        .map((player) => {
-          const changeText = `+${player.change}`;
-          return `🟢 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
-        })
-        .join("\n");
-
       embed.addFields({
         name: "🟢 Gagnants",
-        value: winnersText,
+        value: winners.map((p) => `🟢 ${formatLine(p)}`).join("\n"),
         inline: false,
       });
     }
 
-    // Affichage des perdants
     if (losers.length > 0) {
-      const losersText = losers
-        .map((player) => {
-          const changeText = `${player.change}`;
-          return `🔴 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
-        })
-        .join("\n");
-
       embed.addFields({
         name: "🔴 Perdants",
-        value: losersText,
+        value: losers.map((p) => `🔴 ${formatLine(p)}`).join("\n"),
         inline: false,
       });
-    } else {
-      // Fallback: afficher tous les joueurs qui ne sont pas gagnants
-      const allPlayers = Object.values(eloResult.updatedPlayers);
-      const nonWinners = allPlayers.filter((p) => p.result !== "win");
+    }
 
-      if (nonWinners.length > 0) {
-        Logger.info(
-          `[CUSTOM_GAME] Fallback: Affichage de ${nonWinners.length} non-gagnants`
-        );
-        const nonWinnersText = nonWinners
-          .map((player) => {
-            const changeText = `${player.change}`;
-            return `🔴 **${player.username}**: ${player.oldElo} → ${player.newElo} (${changeText})`;
-          })
-          .join("\n");
-
-        embed.addFields({
-          name: "🔴 Perdants",
-          value: nonWinnersText,
-          inline: false,
-        });
-      }
+    const mvp = winners.find((p) => p.performanceRole === "MVP");
+    const ace = losers.find((p) => p.performanceRole === "ACE");
+    if (mvp || ace) {
+      const parts = [];
+      if (mvp) parts.push(`🌟 MVP : **${mvp.username}** (+10% rating)`);
+      if (ace) parts.push(`💀 ACE : **${ace.username}** (-10% de perte)`);
+      embed.addFields({ name: "Performances", value: parts.join("\n"), inline: false });
     }
 
     return embed;
@@ -1387,8 +1554,11 @@ export class CustomGameHandler {
 
   async showLeaderboard(message, page = 0) {
     try {
-      const playerStats = await PlayerStats.find({}).sort({
-        elo: -1,
+      const playerStats = await PlayerStats.find({
+        gamesPlayed: { $gte: this.ratingService.config.leaderboardMinGames },
+        rd: { $lte: this.ratingService.config.leaderboardDropRD },
+      }).sort({
+        rating: -1,
         totalGames: -1,
       });
 
@@ -1410,7 +1580,7 @@ export class CustomGameHandler {
 
       const leaderboardEmbed = new EmbedBuilder()
         .setTitle("🏆 Classement 5v5 Custom")
-        .setDescription(`Top ${playerStats.length} des joueurs par Elo`)
+        .setDescription(`Top ${playerStats.length} des joueurs par rating (placements terminés)`)
         .setColor("#ffd700")
         .setFooter({
           text: `Page ${page + 1}/${totalPages} • ${
@@ -1438,8 +1608,9 @@ export class CustomGameHandler {
             ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
             : "0.0";
 
+        const tierLabel = this._displayLabel(stats);
         leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   🏆 Elo: **${stats.elo}** | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} parties\n`;
+        leaderboardText += `   🏆 ${tierLabel} | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} | 🌟 ${stats.mvpCount || 0} / 💀 ${stats.aceCount || 0}\n`;
         leaderboardText += "\n";
       }
 
@@ -1527,23 +1698,22 @@ export class CustomGameHandler {
           ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
           : "0.0";
 
-      // Déterminer le rang
-      let rank = "🥉 Bronze";
-      let color = "#cd7f32";
-      if (playerStats.elo >= 1500) { rank = "🥇 Or"; color = "#ffd700"; }
-      else if (playerStats.elo >= 1300) { rank = "🥈 Argent"; color = "#c0c0c0"; }
-      else if (playerStats.elo >= 1100) { rank = "🥉 Bronze"; color = "#cd7f32"; }
-      else if (playerStats.elo < 900) { rank = "🔻 ELO Bas"; color = "#ff6b6b"; }
-      else { color = "#808080"; }
+      const tierInfo = this.ratingService.getTier(playerStats);
+      const displayScore = this.ratingService.getDisplayScore(playerStats);
+      const color = tierColor(tierInfo.tier);
+      const tierLine =
+        tierInfo.tier === "Placements"
+          ? formatTier(tierInfo)
+          : `${formatTier(tierInfo)} — **${displayScore}/100**`;
 
       const statsEmbed = new EmbedBuilder()
         .setTitle(`📊 Statistiques de ${playerStats.username}`)
-        .setDescription(`**${rank}**`)
+        .setDescription(tierLine)
         .setColor(color)
         .addFields(
           {
-            name: "🏆 ELO",
-            value: `${playerStats.elo}`,
+            name: "🏆 Rating (interne)",
+            value: `${Math.round(playerStats.rating)} (RD ${Math.round(playerStats.rd)})`,
             inline: true,
           },
           {
@@ -1554,6 +1724,11 @@ export class CustomGameHandler {
           {
             name: "📊 W/L",
             value: `${playerStats.wins}W / ${playerStats.losses}L (${winrate}%)`,
+            inline: true,
+          },
+          {
+            name: "🌟 MVP / 💀 ACE",
+            value: `${playerStats.mvpCount || 0} 🌟 / ${playerStats.aceCount || 0} 💀`,
             inline: true,
           },
           {
@@ -1628,8 +1803,11 @@ export class CustomGameHandler {
       }
 
       // Vérifier que la page est valide
-      const playerStats = await PlayerStats.find({}).sort({
-        elo: -1,
+      const playerStats = await PlayerStats.find({
+        gamesPlayed: { $gte: this.ratingService.config.leaderboardMinGames },
+        rd: { $lte: this.ratingService.config.leaderboardDropRD },
+      }).sort({
+        rating: -1,
         totalGames: -1,
       });
       const totalPages = Math.ceil(playerStats.length / 5);
@@ -1657,8 +1835,11 @@ export class CustomGameHandler {
 
   async showLeaderboardPage(interaction, page) {
     try {
-      const playerStats = await PlayerStats.find({}).sort({
-        elo: -1,
+      const playerStats = await PlayerStats.find({
+        gamesPlayed: { $gte: this.ratingService.config.leaderboardMinGames },
+        rd: { $lte: this.ratingService.config.leaderboardDropRD },
+      }).sort({
+        rating: -1,
         totalGames: -1,
       });
 
@@ -1680,7 +1861,7 @@ export class CustomGameHandler {
 
       const leaderboardEmbed = new EmbedBuilder()
         .setTitle("🏆 Classement 5v5 Custom")
-        .setDescription(`Top ${playerStats.length} des joueurs par Elo`)
+        .setDescription(`Top ${playerStats.length} des joueurs par rating (placements terminés)`)
         .setColor("#ffd700")
         .setFooter({
           text: `Page ${page + 1}/${totalPages} • ${
@@ -1708,8 +1889,9 @@ export class CustomGameHandler {
             ? ((stats.wins / stats.totalGames) * 100).toFixed(1)
             : "0.0";
 
+        const tierLabel = this._displayLabel(stats);
         leaderboardText += `${medal} **${stats.username}**\n`;
-        leaderboardText += `   🏆 Elo: **${stats.elo}** | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} parties\n`;
+        leaderboardText += `   🏆 ${tierLabel} | 📊 ${stats.wins}W/${stats.losses}L (${winrate}%) | 🎮 ${stats.totalGames} | 🌟 ${stats.mvpCount || 0} / 💀 ${stats.aceCount || 0}\n`;
         leaderboardText += "\n";
       }
 

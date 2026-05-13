@@ -1,87 +1,74 @@
 import { Logger } from "../utils/logger.js";
-import { EloService } from "../services/eloService.js";
+import { RatingService } from "../services/ratingService.js";
 import { PlayerStats } from "../models/PlayerStats.js";
 import { Match } from "../models/Match.js";
 
+/**
+ * Controller for the rating system (Glicko-2 + tiers).
+ * Named EloController only for legacy import paths.
+ */
 export class EloController {
   constructor() {
-    this.eloService = new EloService();
+    this.ratingService = new RatingService();
   }
 
-  /**
-   * Résout un match et met à jour les Elo de tous les joueurs
-   * @param {Object} matchData - Données du match
-   * @param {string} resolvedBy - ID de l'utilisateur qui résout le match
-   * @returns {Object} - Résultat de la résolution
-   */
   async resolveMatch(matchData, resolvedBy) {
     try {
-      Logger.info(`[ELO_CONTROLLER] Résolution du match par ${resolvedBy}`);
+      Logger.info(`[RATING_CONTROLLER] Résolution du match par ${resolvedBy}`);
 
-      // Valider les données du match
       const validation = this.validateMatchData(matchData);
       if (!validation.valid) {
         throw new Error(`Données de match invalides: ${validation.error}`);
       }
 
-      // Générer un ID unique pour le match
       const matchId = `match_${Date.now()}_${Math.random()
         .toString(36)
         .substr(2, 9)}`;
 
-      // Récupérer ou créer les statistiques des joueurs
       const playersStats = await this.getOrCreatePlayersStats(matchData);
 
-      // Calculer les changements d'Elo
-      const eloCalculations =
-        this.eloService.calculateMatchEloChanges(matchData);
+      const now = new Date();
+      const inflatedMatchData = this._inflateRDs(matchData, playersStats, now);
 
-      // Mettre à jour les Elo des joueurs
-      const updatedPlayers = await this.updatePlayersElo(
+      const ratingCalculations =
+        this.ratingService.calculateMatchRatingChanges(inflatedMatchData);
+
+      const updatedPlayers = await this.updatePlayersRating(
         playersStats,
-        eloCalculations,
-        matchId
+        ratingCalculations,
+        matchId,
+        now
       );
 
-      // Sauvegarder le match
       const savedMatch = await this.saveMatch(
-        matchData,
-        eloCalculations,
+        inflatedMatchData,
+        ratingCalculations,
         matchId,
         resolvedBy
       );
 
-      Logger.info(`[ELO_CONTROLLER] Match résolu avec succès: ${matchId}`);
+      Logger.info(`[RATING_CONTROLLER] Match résolu avec succès: ${matchId}`);
 
       return {
         success: true,
         matchId,
         match: savedMatch,
         updatedPlayers,
-        eloCalculations: eloCalculations.matchSummary,
+        matchSummary: ratingCalculations.matchSummary,
       };
     } catch (error) {
-      Logger.error(
-        `[ELO_CONTROLLER] Erreur résolution match: ${error.message}`
-      );
+      Logger.error(`[RATING_CONTROLLER] Erreur résolution match: ${error.message}`);
       throw error;
     }
   }
 
-  /**
-   * Valide les données du match
-   * @param {Object} matchData - Données du match
-   * @returns {Object} - {valid: boolean, error?: string}
-   */
   validateMatchData(matchData) {
     if (!matchData.team1 || !matchData.team2) {
       return { valid: false, error: "Équipes manquantes" };
     }
-
     if (!matchData.team1.players || !matchData.team2.players) {
       return { valid: false, error: "Joueurs des équipes manquants" };
     }
-
     if (
       matchData.team1.players.length !== 5 ||
       matchData.team2.players.length !== 5
@@ -91,82 +78,98 @@ export class EloController {
         error: "Chaque équipe doit avoir exactement 5 joueurs",
       };
     }
-
     if (!matchData.winner || !["team1", "team2"].includes(matchData.winner)) {
       return { valid: false, error: "Gagnant invalide" };
     }
-
-    // Valider que chaque joueur a les données requises
     const allPlayers = [...matchData.team1.players, ...matchData.team2.players];
     for (const player of allPlayers) {
-      if (!player.userId || !player.username || !player.elo || !player.cost) {
+      if (!player.userId || !player.username || player.rating == null) {
         return {
           valid: false,
           error: `Données joueur incomplètes: ${player.username || "Unknown"}`,
         };
       }
     }
-
     return { valid: true };
   }
 
-  /**
-   * Récupère ou crée les statistiques des joueurs
-   * @param {Object} matchData - Données du match
-   * @returns {Object} - Statistiques des joueurs
-   */
   async getOrCreatePlayersStats(matchData) {
     const allPlayers = [...matchData.team1.players, ...matchData.team2.players];
     const playersStats = {};
 
     for (const player of allPlayers) {
       let playerStats = await PlayerStats.findOne({ userId: player.userId });
-
       if (!playerStats) {
-        // Créer de nouvelles statistiques pour le joueur
+        const defaults = this.ratingService.defaultPlayerFields();
         playerStats = await PlayerStats.create({
           userId: player.userId,
           username: player.username,
-          elo: player.elo || 1000,
+          ...defaults,
         });
-
         Logger.info(
-          `[ELO_CONTROLLER] Nouvelles statistiques créées pour ${player.username}`
+          `[RATING_CONTROLLER] Nouvelles statistiques créées pour ${player.username}`
         );
       }
-
       playersStats[player.userId] = playerStats;
     }
-
     return playersStats;
   }
 
   /**
-   * Met à jour les Elo des joueurs
-   * @param {Object} playersStats - Statistiques des joueurs
-   * @param {Object} eloCalculations - Calculs d'Elo
-   * @param {string} matchId - ID du match
-   * @returns {Object} - Joueurs mis à jour
+   * Inflate each player's RD for inactivity BEFORE the match is computed.
+   * Returns a new matchData with the inflated rd values; persists them on playersStats.
    */
-  async updatePlayersElo(playersStats, eloCalculations, matchId) {
+  _inflateRDs(matchData, playersStats, now) {
+    const inflate = (player) => {
+      const stats = playersStats[player.userId];
+      const inflatedRD = this.ratingService.inflateRDForInactivity(
+        { rd: stats.rd, lastGameAt: stats.lastGameAt },
+        now
+      );
+      if (inflatedRD !== stats.rd) {
+        Logger.info(
+          `[RATING_CONTROLLER] RD inflated for ${player.username}: ${stats.rd.toFixed(1)} → ${inflatedRD.toFixed(1)}`
+        );
+        stats.rd = inflatedRD;
+      }
+      return {
+        userId: player.userId,
+        username: player.username,
+        rating: stats.rating,
+        rd: stats.rd,
+        volatility: stats.volatility,
+        cost: player.cost,
+        role: player.role,
+      };
+    };
+
+    return {
+      team1: { players: matchData.team1.players.map(inflate) },
+      team2: { players: matchData.team2.players.map(inflate) },
+      winner: matchData.winner,
+      mvpUserId: matchData.mvpUserId || null,
+      aceUserId: matchData.aceUserId || null,
+      duration: matchData.duration,
+      victoryMargin: matchData.victoryMargin,
+    };
+  }
+
+  async updatePlayersRating(playersStats, ratingCalculations, matchId, now) {
     const updatedPlayers = {};
 
-    // Compute average costs for opponent tracking
-    const team1AvgCost =
-      eloCalculations.team1.reduce((sum, p) => sum + (p.cost || 0), 0) /
-      eloCalculations.team1.length;
-    const team2AvgCost =
-      eloCalculations.team2.reduce((sum, p) => sum + (p.cost || 0), 0) /
-      eloCalculations.team2.length;
+    const team1AvgCost = avgCost(ratingCalculations.team1);
+    const team2AvgCost = avgCost(ratingCalculations.team2);
 
-    // Helper to update a single player
     const updatePlayer = async (playerResult, opponentAvgCost) => {
       const playerStats = playersStats[playerResult.userId];
-      const oldElo = playerStats.elo;
-      const newElo = oldElo + playerResult.eloChange.change;
+      const change = playerResult.ratingChange;
       const isWin = playerResult.result === "win";
 
-      playerStats.elo = newElo;
+      playerStats.rating = change.ratingAfter;
+      playerStats.rd = change.rdAfter;
+      playerStats.volatility = change.volatilityAfter;
+      playerStats.gamesPlayed = (playerStats.gamesPlayed || 0) + 1;
+      playerStats.lastGameAt = now;
       playerStats.totalGames++;
 
       if (isWin) {
@@ -175,7 +178,12 @@ export class EloController {
         playerStats.losses++;
       }
 
-      // Opponent cost tracking
+      if (playerResult.performanceRole === "MVP") {
+        playerStats.mvpCount = (playerStats.mvpCount || 0) + 1;
+      } else if (playerResult.performanceRole === "ACE") {
+        playerStats.aceCount = (playerStats.aceCount || 0) + 1;
+      }
+
       const costKey = Math.round(opponentAvgCost).toString();
       if (isWin) {
         const prevTotal =
@@ -197,99 +205,111 @@ export class EloController {
         );
       }
 
-      // ELO history
-      playerStats.eloHistory.push({
-        elo: newElo,
-        change: playerResult.eloChange.change,
+      playerStats.ratingHistory.push({
+        rating: change.ratingAfter,
+        rd: change.rdAfter,
+        displayScore: change.displayAfter,
+        ratingDelta: change.ratingDelta,
+        displayDelta: change.displayDelta,
         matchId,
-        date: new Date(),
+        date: now,
       });
-      if (playerStats.eloHistory.length > 50) {
-        playerStats.eloHistory = playerStats.eloHistory.slice(-50);
+      if (playerStats.ratingHistory.length > 50) {
+        playerStats.ratingHistory = playerStats.ratingHistory.slice(-50);
       }
 
-      playerStats.lastUpdated = new Date();
+      playerStats.lastUpdated = now;
       await playerStats.save();
+
+      const tierAfter = this.ratingService.getTier(playerStats);
 
       updatedPlayers[playerResult.userId] = {
         username: playerResult.username,
-        oldElo,
-        newElo,
-        change: playerResult.eloChange.change,
+        ratingBefore: change.ratingBefore,
+        ratingAfter: change.ratingAfter,
+        ratingDelta: change.ratingDelta,
+        displayBefore: change.displayBefore,
+        displayAfter: change.displayAfter,
+        displayDelta: change.displayDelta,
         result: playerResult.result,
+        performanceRole: playerResult.performanceRole || null,
+        tier: tierAfter,
       };
 
       Logger.info(
-        `[ELO_CONTROLLER] ${playerResult.username}: ${oldElo} → ${newElo} (${
-          playerResult.eloChange.change > 0 ? "+" : ""
-        }${playerResult.eloChange.change})`
+        `[RATING_CONTROLLER] ${playerResult.username}: display ${change.displayBefore} → ${change.displayAfter} (${change.displayDelta >= 0 ? "+" : ""}${change.displayDelta})`
       );
     };
 
-    // Team 1 players (opponent = team 2)
-    for (const playerResult of eloCalculations.team1) {
+    for (const playerResult of ratingCalculations.team1) {
       await updatePlayer(playerResult, team2AvgCost);
     }
-
-    // Team 2 players (opponent = team 1)
-    for (const playerResult of eloCalculations.team2) {
+    for (const playerResult of ratingCalculations.team2) {
       await updatePlayer(playerResult, team1AvgCost);
     }
-
     return updatedPlayers;
   }
 
-  /**
-   * Sauvegarde le match en base
-   * @param {Object} matchData - Données du match
-   * @param {Object} eloCalculations - Calculs d'Elo
-   * @param {string} matchId - ID du match
-   * @param {string} resolvedBy - ID de l'utilisateur qui résout le match
-   * @returns {Object} - Match sauvegardé
-   */
-  async saveMatch(matchData, eloCalculations, matchId, resolvedBy) {
+  async saveMatch(inflatedMatchData, ratingCalculations, matchId, resolvedBy) {
+    const avg = (arr, key) =>
+      arr.length === 0 ? 0 : arr.reduce((s, x) => s + (x[key] || 0), 0) / arr.length;
+
+    const team1Players = ratingCalculations.team1.map((p) => ({
+      userId: p.userId,
+      username: p.username,
+      ratingBefore: p.ratingChange.ratingBefore,
+      ratingAfter: p.ratingChange.ratingAfter,
+      rdBefore: p.ratingChange.rdBefore,
+      rdAfter: p.ratingChange.rdAfter,
+      volatilityBefore: p.ratingChange.volatilityBefore,
+      volatilityAfter: p.ratingChange.volatilityAfter,
+      ratingDelta: p.ratingChange.ratingDelta,
+      displayBefore: p.ratingChange.displayBefore,
+      displayAfter: p.ratingChange.displayAfter,
+      displayDelta: p.ratingChange.displayDelta,
+      cost: p.cost,
+      role: p.role,
+      result: p.result,
+      performanceRole: p.performanceRole || null,
+    }));
+    const team2Players = ratingCalculations.team2.map((p) => ({
+      userId: p.userId,
+      username: p.username,
+      ratingBefore: p.ratingChange.ratingBefore,
+      ratingAfter: p.ratingChange.ratingAfter,
+      rdBefore: p.ratingChange.rdBefore,
+      rdAfter: p.ratingChange.rdAfter,
+      volatilityBefore: p.ratingChange.volatilityBefore,
+      volatilityAfter: p.ratingChange.volatilityAfter,
+      ratingDelta: p.ratingChange.ratingDelta,
+      displayBefore: p.ratingChange.displayBefore,
+      displayAfter: p.ratingChange.displayAfter,
+      displayDelta: p.ratingChange.displayDelta,
+      cost: p.cost,
+      role: p.role,
+      result: p.result,
+      performanceRole: p.performanceRole || null,
+    }));
+
     const match = new Match({
       matchId,
       team1: {
-        players: matchData.team1.players,
-        averageElo: eloCalculations.matchSummary.team1AverageElo,
-        averageCost: eloCalculations.matchSummary.team1AverageCost,
+        players: team1Players,
+        averageRating: ratingCalculations.matchSummary.team1Avatar.rating,
+        averageRD: ratingCalculations.matchSummary.team1Avatar.rd,
+        averageCost: avg(inflatedMatchData.team1.players, "cost"),
       },
       team2: {
-        players: matchData.team2.players,
-        averageElo: eloCalculations.matchSummary.team2AverageElo,
-        averageCost: eloCalculations.matchSummary.team2AverageCost,
+        players: team2Players,
+        averageRating: ratingCalculations.matchSummary.team2Avatar.rating,
+        averageRD: ratingCalculations.matchSummary.team2Avatar.rd,
+        averageCost: avg(inflatedMatchData.team2.players, "cost"),
       },
-      winner: matchData.winner,
-      duration: matchData.duration || null,
-      victoryMargin: matchData.victoryMargin || null,
-      eloCalculations: {
-        // Calculer l'expected moyen pour chaque équipe basé sur les expected individuels
-        team1Expected:
-          eloCalculations.team1.length > 0
-            ? eloCalculations.team1.reduce(
-                (sum, p) => sum + (p.eloChange?.expected || 0),
-                0
-              ) / eloCalculations.team1.length
-            : 0.5,
-        team2Expected:
-          eloCalculations.team2.length > 0
-            ? eloCalculations.team2.reduce(
-                (sum, p) => sum + (p.eloChange?.expected || 0),
-                0
-              ) / eloCalculations.team2.length
-            : 0.5,
-        team1Change: eloCalculations.team1.reduce(
-          (sum, p) => sum + (p.eloChange?.change || 0),
-          0
-        ),
-        team2Change: eloCalculations.team2.reduce(
-          (sum, p) => sum + (p.eloChange?.change || 0),
-          0
-        ),
-        kFactor: eloCalculations.team1[0]?.eloChange?.kFactor || 24,
-        lambda: null, // Plus utilisé dans le système Elo-only
-      },
+      winner: inflatedMatchData.winner,
+      mvpUserId: inflatedMatchData.mvpUserId || null,
+      aceUserId: inflatedMatchData.aceUserId || null,
+      duration: inflatedMatchData.duration || null,
+      victoryMargin: inflatedMatchData.victoryMargin || null,
       resolvedBy,
     });
 
@@ -297,87 +317,95 @@ export class EloController {
     return match;
   }
 
-  /**
-   * Obtient les statistiques d'un joueur
-   * @param {string} userId - ID du joueur
-   * @returns {Object} - Statistiques du joueur
-   */
   async getPlayerStats(userId) {
     try {
       const playerStats = await PlayerStats.findOne({ userId });
+      if (!playerStats) return null;
 
-      if (!playerStats) {
-        return null;
-      }
+      const tier = this.ratingService.getTier(playerStats);
+      const displayScore = this.ratingService.getDisplayScore(playerStats);
 
       return {
         userId: playerStats.userId,
         username: playerStats.username,
-        elo: playerStats.elo,
+        rating: playerStats.rating,
+        rd: playerStats.rd,
+        volatility: playerStats.volatility,
+        displayScore,
+        tier,
+        gamesPlayed: playerStats.gamesPlayed,
         wins: playerStats.wins,
         losses: playerStats.losses,
         totalGames: playerStats.totalGames,
+        mvpCount: playerStats.mvpCount || 0,
+        aceCount: playerStats.aceCount || 0,
         winrate:
           playerStats.totalGames > 0
             ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
             : 0,
-        eloHistory: playerStats.eloHistory.slice(-10),
+        ratingHistory: playerStats.ratingHistory.slice(-10),
         lastUpdated: playerStats.lastUpdated,
+        lastGameAt: playerStats.lastGameAt,
+        avgOpponentCostWhenWin: playerStats.avgOpponentCostWhenWin,
+        avgOpponentCostWhenLose: playerStats.avgOpponentCostWhenLose,
       };
     } catch (error) {
-      Logger.error(
-        `[ELO_CONTROLLER] Erreur récupération stats joueur: ${error.message}`
-      );
+      Logger.error(`[RATING_CONTROLLER] Erreur stats joueur: ${error.message}`);
       throw error;
     }
   }
 
-  /**
-   * Obtient le classement des joueurs
-   * @param {number} limit - Nombre de joueurs à retourner
-   * @returns {Array} - Classement des joueurs
-   */
   async getLeaderboard(limit = 50) {
     try {
-      const players = await PlayerStats.find({})
-        .sort({ elo: -1, totalGames: -1 })
+      const eligible = await PlayerStats.find({
+        gamesPlayed: { $gte: this.ratingService.config.leaderboardMinGames },
+        rd: { $lte: this.ratingService.config.leaderboardDropRD },
+      })
+        .sort({ rating: -1, totalGames: -1 })
         .limit(limit);
 
-      return players.map((player, index) => ({
-        rank: index + 1,
-        userId: player.userId,
-        username: player.username,
-        elo: player.elo,
-        wins: player.wins,
-        losses: player.losses,
-        totalGames: player.totalGames,
-        winrate:
-          player.totalGames > 0
-            ? ((player.wins / player.totalGames) * 100).toFixed(1)
-            : 0,
-      }));
+      return eligible.map((player, index) => {
+        const tier = this.ratingService.getTier(player);
+        return {
+          rank: index + 1,
+          userId: player.userId,
+          username: player.username,
+          rating: player.rating,
+          rd: player.rd,
+          displayScore: this.ratingService.getDisplayScore(player),
+          tier,
+          wins: player.wins,
+          losses: player.losses,
+          totalGames: player.totalGames,
+          gamesPlayed: player.gamesPlayed,
+          winrate:
+            player.totalGames > 0
+              ? ((player.wins / player.totalGames) * 100).toFixed(1)
+              : 0,
+        };
+      });
     } catch (error) {
-      Logger.error(
-        `[ELO_CONTROLLER] Erreur récupération classement: ${error.message}`
-      );
+      Logger.error(`[RATING_CONTROLLER] Erreur classement: ${error.message}`);
       throw error;
     }
   }
 
-  /**
-   * Met à jour la configuration du service Elo
-   * @param {Object} newConfig - Nouvelle configuration
-   */
   updateEloConfig(newConfig) {
-    this.eloService.updateConfig(newConfig);
-    Logger.info(`[ELO_CONTROLLER] Configuration Elo mise à jour`);
+    this.ratingService.updateConfig(newConfig);
   }
 
-  /**
-   * Obtient la configuration actuelle du service Elo
-   * @returns {Object} - Configuration actuelle
-   */
   getEloConfig() {
-    return this.eloService.getConfig();
+    return this.ratingService.getConfig();
   }
+
+  getRatingService() {
+    return this.ratingService;
+  }
+}
+
+function avgCost(playerResults) {
+  if (!playerResults.length) return 0;
+  return (
+    playerResults.reduce((s, p) => s + (p.cost || 0), 0) / playerResults.length
+  );
 }

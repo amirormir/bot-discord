@@ -1,11 +1,14 @@
 import { Logger } from "../utils/logger.js";
 import { PlayerStats } from "../models/PlayerStats.js";
 import { Match } from "../models/Match.js";
+import { RatingService } from "../services/ratingService.js";
+import { tierColor, formatTier } from "../services/tiers.js";
 import { EmbedBuilder } from "discord.js";
 
 export class AdminHandler {
   constructor() {
     this.globalResponsesPaused = false;
+    this.ratingService = new RatingService();
   }
 
   /**
@@ -186,27 +189,27 @@ export class AdminHandler {
       let playerStats = await PlayerStats.findOne({ userId: user.id });
 
       if (!playerStats) {
-        // Créer les stats si elles n'existent pas
+        const defaults = this.ratingService.defaultPlayerFields();
         playerStats = await PlayerStats.create({
           userId: user.id,
           username: user.username,
-          elo: 1000,
-          gamesPlayed: 0,
+          ...defaults,
         });
       }
 
-      const oldElo = playerStats.elo;
-      let newElo;
+      const oldRating = playerStats.rating;
+      const oldDisplay = this.ratingService.getDisplayScore(playerStats);
+      let newRating;
 
       switch (action) {
         case "add":
-          newElo = oldElo + points;
+          newRating = oldRating + points;
           break;
         case "remove":
-          newElo = Math.max(0, oldElo - points);
+          newRating = Math.max(0, oldRating - points);
           break;
         case "set":
-          newElo = points;
+          newRating = points;
           break;
         default:
           await message.reply(
@@ -215,31 +218,38 @@ export class AdminHandler {
           return;
       }
 
-      // Ajouter à l'historique ELO
-      playerStats.eloHistory.push({
-        elo: newElo,
-        change: newElo - oldElo,
+      playerStats.rating = newRating;
+      const newDisplay = this.ratingService.getDisplayScore(playerStats);
+
+      playerStats.ratingHistory.push({
+        rating: newRating,
+        rd: playerStats.rd,
+        displayScore: newDisplay,
+        ratingDelta: newRating - oldRating,
+        displayDelta: newDisplay - oldDisplay,
         matchId: `admin_${Date.now()}`,
         date: new Date(),
       });
 
-      playerStats.elo = newElo;
       playerStats.lastUpdated = new Date();
       await playerStats.save();
 
-      const changeText =
-        newElo - oldElo > 0 ? `+${newElo - oldElo}` : `${newElo - oldElo}`;
+      const ratingDelta = newRating - oldRating;
+      const displayDelta = newDisplay - oldDisplay;
+      const ratingChangeText = ratingDelta > 0 ? `+${ratingDelta}` : `${ratingDelta}`;
+      const displayChangeText = displayDelta > 0 ? `+${displayDelta}` : `${displayDelta}`;
       const actionText =
         action === "add" ? "ajouté" : action === "remove" ? "retiré" : "défini";
 
       const embed = new EmbedBuilder()
         .setColor(0x51cf66)
-        .setTitle("✅ ELO Modifié")
-        .setDescription(`ELO ${actionText} pour **${user.username}**`)
+        .setTitle("✅ Rating Modifié")
+        .setDescription(`Rating ${actionText} pour **${user.username}**`)
         .addFields(
-          { name: "Ancien ELO", value: `${oldElo}`, inline: true },
-          { name: "Nouveau ELO", value: `${newElo}`, inline: true },
-          { name: "Changement", value: `${changeText}`, inline: true }
+          { name: "Ancien rating", value: `${Math.round(oldRating)}`, inline: true },
+          { name: "Nouveau rating", value: `${Math.round(newRating)}`, inline: true },
+          { name: "Changement", value: `${ratingChangeText}`, inline: true },
+          { name: "Display", value: `${oldDisplay} → ${newDisplay} (${displayChangeText})`, inline: false }
         )
         .setFooter({ text: `Modifié par ${message.author.username}` })
         .setTimestamp();
@@ -247,7 +257,7 @@ export class AdminHandler {
       await message.reply({ embeds: [embed] });
 
       Logger.info(
-        `[ADMIN] ELO ${actionText} pour ${user.username} (${user.id}): ${oldElo} → ${newElo} (${changeText}) par ${message.author.tag}`
+        `[ADMIN] Rating ${actionText} pour ${user.username} (${user.id}): ${Math.round(oldRating)} → ${Math.round(newRating)} (${ratingChangeText}) par ${message.author.tag}`
       );
     } catch (error) {
       Logger.error(
@@ -279,8 +289,8 @@ export class AdminHandler {
         .setTitle("⚠️ CONFIRMATION REQUISE")
         .setDescription(
           "**ATTENTION:** Cette action va:\n" +
-            "• Remettre l'ELO de **TOUS** les joueurs à 1000\n" +
-            "• Remettre les matchs joués de **TOUS** les joueurs à 0\n" +
+            "• Réinitialiser le rating de **TOUS** les joueurs (1000 / RD 200)\n" +
+            "• Remettre les parties jouées de **TOUS** les joueurs à 0\n" +
             "• **SUPPRIMER** tous les matchs de l'historique\n\n" +
             "**Cette action est IRRÉVERSIBLE !**\n\n" +
             "Tapez `!admin eloreset confirm` pour confirmer."
@@ -328,8 +338,8 @@ export class AdminHandler {
 
       const successEmbed = new EmbedBuilder()
         .setColor(0x51cf66)
-        .setTitle("✅ Reset ELO Terminé")
-        .setDescription("Le reset ELO a été effectué avec succès !")
+        .setTitle("✅ Reset Rating Terminé")
+        .setDescription("Le reset du classement a été effectué avec succès !")
         .addFields(
           {
             name: "Joueurs réinitialisés",
@@ -337,7 +347,7 @@ export class AdminHandler {
             inline: true,
           },
           { name: "Matchs supprimés", value: `${matchCount}`, inline: true },
-          { name: "Nouvel ELO", value: "1000 pour tous", inline: true }
+          { name: "Nouveau rating", value: "1000 (RD 200) pour tous", inline: true }
         )
         .setFooter({ text: `Reset effectué par ${message.author.username}` })
         .setTimestamp();
@@ -387,8 +397,8 @@ export class AdminHandler {
             `**${user.username}** n'a pas encore joué de parties.`
           )
           .addFields({
-            name: "ELO",
-            value: "1000 (défaut)",
+            name: "Tier",
+            value: "Aucun (placements non commencés)",
             inline: true,
           })
           .addFields({
@@ -408,32 +418,26 @@ export class AdminHandler {
         return;
       }
 
-      // Calculer le winrate
       const winrate =
         playerStats.totalGames > 0
           ? ((playerStats.wins / playerStats.totalGames) * 100).toFixed(1)
           : "0.0";
 
-      // Déterminer la couleur selon l'ELO
-      let color = 0x808080; // Gris par défaut
-      if (playerStats.elo >= 1500) color = 0xffd700; // Or
-      else if (playerStats.elo >= 1300) color = 0xc0c0c0; // Argent
-      else if (playerStats.elo >= 1100) color = 0xcd7f32; // Bronze
-      else if (playerStats.elo < 900) color = 0xff6b6b; // Rouge (ELO bas)
+      const tierInfo = this.ratingService.getTier(playerStats);
+      const displayScore = this.ratingService.getDisplayScore(playerStats);
+      const color = parseInt(tierColor(tierInfo.tier).replace("#", ""), 16);
 
-      // Déterminer le rang selon l'ELO
-      let rank = "🥉 Bronze";
-      if (playerStats.elo >= 1500) rank = "🥇 Or";
-      else if (playerStats.elo >= 1300) rank = "🥈 Argent";
-      else if (playerStats.elo >= 1100) rank = "🥉 Bronze";
-      else if (playerStats.elo < 900) rank = "🔻 ELO Bas";
+      const tierLine =
+        tierInfo.tier === "Placements"
+          ? formatTier(tierInfo)
+          : `${formatTier(tierInfo)} — **${displayScore}/100**`;
 
       const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(`📊 Stats de ${user.username}`)
-        .setDescription(`**${rank}**`)
+        .setDescription(tierLine)
         .addFields(
-          { name: "ELO", value: `${playerStats.elo}`, inline: true },
+          { name: "Rating (interne)", value: `${Math.round(playerStats.rating)} (RD ${Math.round(playerStats.rd)})`, inline: true },
           {
             name: "Parties Jouées",
             value: `${playerStats.totalGames}`,

@@ -202,6 +202,16 @@ export class DiscordBot {
             interaction
           );
         }
+        if (interaction.customId === "mvp_select") {
+          await this.messageHandler.customGameHandler.handleMvpSelection(
+            interaction
+          );
+        }
+        if (interaction.customId === "ace_select") {
+          await this.messageHandler.customGameHandler.handleAceSelection(
+            interaction
+          );
+        }
       }
 
       // Gestion des boutons
@@ -221,11 +231,15 @@ export class DiscordBot {
           );
         }
         if (interaction.customId === "cancel_game") {
-          await interaction.reply({
-            content: "❌ Partie annulée.",
-            ephemeral: true,
-          });
-          this.messageHandler.customGameHandler.currentGameResult = null;
+          await this.messageHandler.customGameHandler.cancelGame(interaction);
+        }
+        if (
+          interaction.customId === "confirm_match_result" ||
+          interaction.customId === "skip_mvp_ace"
+        ) {
+          await this.messageHandler.customGameHandler.finalizeMatchResult(
+            interaction
+          );
         }
         // Gestion des boutons de pagination du classement
         if (interaction.customId.startsWith("leaderboard_")) {
