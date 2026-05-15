@@ -37,7 +37,7 @@ const activeCustomGameSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["awaiting_winner", "awaiting_performance", "completed"],
+    enum: ["awaiting_winner", "awaiting_performance", "finalizing", "completed"],
     default: "awaiting_winner",
   },
   queueId: {
@@ -86,8 +86,6 @@ const activeCustomGameSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
-
-activeCustomGameSchema.index({ key: 1 }, { unique: true });
 
 export const ActiveCustomGame = mongoose.model(
   "ActiveCustomGame",

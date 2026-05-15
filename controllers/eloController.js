@@ -12,13 +12,25 @@ export class EloController {
     this.ratingService = new RatingService();
   }
 
-  async resolveMatch(matchData, resolvedBy) {
+  async resolveMatch(matchData, resolvedBy, options = {}) {
     try {
+      const { sourceGameKey = null } = options;
       Logger.info(`[RATING_CONTROLLER] Résolution du match par ${resolvedBy}`);
 
       const validation = this.validateMatchData(matchData);
       if (!validation.valid) {
         throw new Error(`Données de match invalides: ${validation.error}`);
+      }
+
+      if (sourceGameKey) {
+        const existingMatch = await Match.findOne({ sourceGameKey });
+        if (existingMatch) {
+          const duplicateError = new Error(
+            `Cette partie a deja ete resolue (${existingMatch.matchId}).`
+          );
+          duplicateError.code = "MATCH_ALREADY_RESOLVED";
+          throw duplicateError;
+        }
       }
 
       const matchId = `match_${Date.now()}_${Math.random()
@@ -44,7 +56,8 @@ export class EloController {
         inflatedMatchData,
         ratingCalculations,
         matchId,
-        resolvedBy
+        resolvedBy,
+        sourceGameKey
       );
 
       Logger.info(`[RATING_CONTROLLER] Match résolu avec succès: ${matchId}`);
@@ -250,7 +263,13 @@ export class EloController {
     return updatedPlayers;
   }
 
-  async saveMatch(inflatedMatchData, ratingCalculations, matchId, resolvedBy) {
+  async saveMatch(
+    inflatedMatchData,
+    ratingCalculations,
+    matchId,
+    resolvedBy,
+    sourceGameKey = null
+  ) {
     const avg = (arr, key) =>
       arr.length === 0 ? 0 : arr.reduce((s, x) => s + (x[key] || 0), 0) / arr.length;
 
@@ -293,6 +312,7 @@ export class EloController {
 
     const match = new Match({
       matchId,
+      sourceGameKey,
       team1: {
         players: team1Players,
         averageRating: ratingCalculations.matchSummary.team1Avatar.rating,

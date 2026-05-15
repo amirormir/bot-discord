@@ -17,6 +17,7 @@ import {
 
 export class CustomGameHandler {
   constructor() {
+    this.finalizationInProgress = false;
     this.currentQueue = null;
     this.roleSelectionTimeouts = new Map();
     this.costSelectionTimeouts = new Map();
@@ -1422,6 +1423,7 @@ export class CustomGameHandler {
    */
   async finalizeMatchResult(interaction) {
     let deferred = false;
+    let lockAcquired = false;
     try {
       await interaction.deferReply();
       deferred = true;
@@ -1445,11 +1447,46 @@ export class CustomGameHandler {
         return;
       }
 
+      if (this.finalizationInProgress) {
+        await interaction.editReply({
+          content: "Partie deja en cours de finalisation par quelqu'un d'autre.",
+        });
+        return;
+      }
+
       const isSkip = interaction.customId === "skip_mvp_ace";
       if (isSkip) {
         this.currentGameResult.mvpUserId = null;
         this.currentGameResult.aceUserId = null;
       }
+
+      this.finalizationInProgress = true;
+      const finalizationLock = await ActiveCustomGame.findOneAndUpdate(
+        {
+          key: "current",
+          status: "awaiting_performance",
+          finalizedAt: null,
+          sourceMatchId: null,
+        },
+        {
+          $set: {
+            status: "finalizing",
+            winner: this.currentGameResult.winner ?? null,
+            mvpUserId: this.currentGameResult.mvpUserId ?? null,
+            aceUserId: this.currentGameResult.aceUserId ?? null,
+            updatedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      if (!finalizationLock) {
+        await interaction.editReply({
+          content: "Partie deja validee ou en cours de validation.",
+        });
+        return;
+      }
+      lockAcquired = true;
 
       Logger.info(
         `[CUSTOM_GAME] Finalisation par ${interaction.user.tag} | winner=${this.currentGameResult.winner} mvp=${this.currentGameResult.mvpUserId} ace=${this.currentGameResult.aceUserId} skip=${isSkip}`
@@ -1488,11 +1525,30 @@ export class CustomGameHandler {
       });
 
       await this.clearActiveCustomGame();
-      await this.clearActiveCustomGame();
       this.currentGameResult = null;
     } catch (error) {
       Logger.error(`[CUSTOM_GAME] Erreur finalisation: ${error.message}`);
       Logger.error(`[CUSTOM_GAME] Stack trace:`, error.stack);
+      if (lockAcquired && this.currentGameResult?.winner) {
+        try {
+          await this.syncActiveCustomGame("awaiting_performance", {
+            winner: this.currentGameResult.winner ?? null,
+            mvpUserId: this.currentGameResult.mvpUserId ?? null,
+            aceUserId: this.currentGameResult.aceUserId ?? null,
+            queueId: this.currentGameResult.queueId ?? null,
+            startedAt: this.currentGameResult.startedAt ?? new Date(),
+          });
+          if (interaction.message) {
+            await interaction.message.edit({
+              components: this._buildPerformanceSelectionComponents(),
+            });
+          }
+        } catch (restoreError) {
+          Logger.warning(
+            `[CUSTOM_GAME] Impossible de restaurer l'etat de finalisation: ${restoreError.message}`
+          );
+        }
+      }
       if (deferred) {
         try {
           await interaction.editReply({
@@ -1502,6 +1558,8 @@ export class CustomGameHandler {
           // ignore
         }
       }
+    } finally {
+      this.finalizationInProgress = false;
     }
   }
 

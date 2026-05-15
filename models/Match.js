@@ -25,6 +25,10 @@ const matchSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  sourceGameKey: {
+    type: String,
+    default: null,
+  },
   team1: {
     players: [playerSnapshotSchema],
     averageRating: Number,
@@ -66,7 +70,7 @@ const matchSchema = new mongoose.Schema({
   },
 });
 
-matchSchema.index({ matchId: 1 });
+matchSchema.index({ sourceGameKey: 1 }, { unique: true, sparse: true });
 matchSchema.index({ createdAt: -1 });
 matchSchema.index({ "team1.players.userId": 1 });
 matchSchema.index({ "team2.players.userId": 1 });

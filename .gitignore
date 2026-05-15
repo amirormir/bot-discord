@@ -40,3 +40,4 @@ build/
 # Fichiers de sauvegarde
 *.bak
 *.backup
+.local-backups/

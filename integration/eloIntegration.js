@@ -11,13 +11,44 @@ export class EloIntegration {
     this.ratingService = this.eloController.getRatingService();
   }
 
+  buildSourceGameKey(gameResult) {
+    const serializeTeam = (players = []) =>
+      players
+        .map((player) =>
+          [
+            player.userId,
+            player.assignedRole || player.selectedRole || "unknown-role",
+            player.selectedCost ?? player.cost ?? "unknown-cost",
+          ].join(":")
+        )
+        .sort()
+        .join("|");
+
+    const startedAt = new Date(
+      gameResult.startedAt || gameResult.finalizedAt || Date.now()
+    ).toISOString();
+
+    return [
+      `queue:${gameResult.queueId || "unknown-queue"}`,
+      `startedAt:${startedAt}`,
+      `winner:${gameResult.winner || "unknown-winner"}`,
+      `team1:${serializeTeam(gameResult.team1?.players)}`,
+      `team2:${serializeTeam(gameResult.team2?.players)}`,
+    ].join("::");
+  }
+
   async resolveMatchWithElo(gameResult, resolvedBy) {
     try {
       Logger.info(
         `[RATING_INTEGRATION] Résolution match par ${resolvedBy}`
       );
       const matchData = await this.convertGameResultToMatchData(gameResult);
-      const result = await this.eloController.resolveMatch(matchData, resolvedBy);
+      const sourceGameKey = this.buildSourceGameKey(gameResult);
+      const result = await this.eloController.resolveMatch(
+        matchData,
+        resolvedBy,
+        { sourceGameKey }
+      );
       Logger.info(`[RATING_INTEGRATION] Match résolu: ${result.matchId}`);
       return result;
     } catch (error) {
