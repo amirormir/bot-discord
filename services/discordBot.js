@@ -1,5 +1,6 @@
 import {
   Client,
+  ChannelType,
   GatewayIntentBits,
   Partials,
   SlashCommandBuilder,
@@ -13,6 +14,7 @@ import { MessageTemplateHandler } from "../handlers/messageTemplateHandler.js";
 import { ReactionRoleHandler } from "../handlers/reactionRoleHandler.js";
 import { RichPresenceService } from "./richPresence.js";
 import { TeamCommandHandler } from "../handlers/teamCommandHandler.js";
+import { TicketRequestHandler } from "../handlers/ticketRequestHandler.js";
 
 export class DiscordBot {
   constructor() {
@@ -32,6 +34,7 @@ export class DiscordBot {
     this.reactionRoleHandler = new ReactionRoleHandler();
     this.richPresence = new RichPresenceService();
     this.teamCommandHandler = new TeamCommandHandler();
+    this.ticketRequestHandler = new TicketRequestHandler();
     this.setupEventHandlers();
   }
 
@@ -114,6 +117,34 @@ export class DiscordBot {
                   .setAutocomplete(true)
               )
           ),
+        new SlashCommandBuilder()
+          .setName("ticket")
+          .setDescription("Configuration des demandes de cost")
+          .addSubcommand((subcommand) =>
+            subcommand
+              .setName("setup")
+              .setDescription("Configure le panneau de demandes de cost")
+              .addChannelOption((option) =>
+                option
+                  .setName("request_channel")
+                  .setDescription("Salon ou les joueurs ouvriront le formulaire")
+                  .addChannelTypes(ChannelType.GuildText)
+                  .setRequired(true)
+              )
+              .addChannelOption((option) =>
+                option
+                  .setName("committee_channel")
+                  .setDescription("Salon ou le comite recevra les demandes")
+                  .addChannelTypes(ChannelType.GuildText)
+                  .setRequired(true)
+              )
+              .addRoleOption((option) =>
+                option
+                  .setName("committee_role")
+                  .setDescription("Role a mentionner pour chaque demande")
+                  .setRequired(true)
+              )
+          ),
       ].map((command) => command.toJSON());
 
       const rest = new REST({ version: "10" }).setToken(CONFIG.DISCORD_TOKEN);
@@ -169,6 +200,15 @@ export class DiscordBot {
             return;
           }
         }
+
+        if (interaction.commandName === "ticket") {
+          const subcommand = interaction.options.getSubcommand();
+
+          if (subcommand === "setup") {
+            await this.ticketRequestHandler.handleSetup(interaction);
+            return;
+          }
+        }
       }
 
       // Gestion de l'autocomplete
@@ -216,6 +256,10 @@ export class DiscordBot {
 
       // Gestion des boutons
       if (interaction.isButton()) {
+        if (interaction.customId === "player_cost_ticket_open") {
+          await this.ticketRequestHandler.handleOpenModal(interaction);
+          return;
+        }
         if (interaction.customId === "join_queue") {
           await this.messageHandler.customGameHandler.joinQueue(interaction);
         }
@@ -246,6 +290,13 @@ export class DiscordBot {
           await this.messageHandler.customGameHandler.handleLeaderboardNavigation(
             interaction
           );
+        }
+      }
+
+      if (interaction.isModalSubmit()) {
+        if (interaction.customId === "player_cost_ticket_modal") {
+          await this.ticketRequestHandler.handleModalSubmit(interaction);
+          return;
         }
       }
     } catch (error) {

@@ -5,6 +5,7 @@ import { MessageTemplateHandler } from "./messageTemplateHandler.js";
 import { ReactionRoleHandler } from "./reactionRoleHandler.js";
 import { CustomGameHandler } from "./customGameHandler.js";
 import { AdminHandler } from "./adminHandler.js";
+import { TicketRequestHandler } from "./ticketRequestHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
 import { RandomResponseUser } from "../models/RandomResponseUser.js";
 import { EmbedBuilder } from "discord.js";
@@ -79,6 +80,7 @@ export class MessageHandler {
     this.messageTemplateHandler = new MessageTemplateHandler();
     this.reactionRoleHandler = new ReactionRoleHandler();
     this.customGameHandler = new CustomGameHandler();
+    this.ticketRequestHandler = new TicketRequestHandler();
   }
 
   async handleMessage(message) {
@@ -87,6 +89,12 @@ export class MessageHandler {
     );
 
     if (message.author.bot) {
+      return;
+    }
+
+    const committeeReplyHandled =
+      await this.ticketRequestHandler.handleCommitteeReply(message);
+    if (committeeReplyHandled) {
       return;
     }
 
@@ -360,6 +368,7 @@ export class MessageHandler {
                 "`/team create` - Créer une team",
                 "`/team add-player` - Ajouter un joueur à une team",
                 "`/team view` - Voir une team existante",
+                "`/ticket setup` - Configurer le panneau de demandes de cost",
               ].join("\n"),
               inline: false,
             },
