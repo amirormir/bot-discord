@@ -4,6 +4,7 @@ dotenv.config();
 
 export const CONFIG = {
   DISCORD_TOKEN: process.env.DISCORD_TOKEN,
+  DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID ?? null,
   INTENTS: ["Guilds", "GuildMessages", "MessageContent"],
 };
 

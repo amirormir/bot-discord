@@ -152,6 +152,7 @@ export class MessageHandler {
       "!removewatch",
       "!setrandomuser",
       "!removerandomuser",
+      "!ticketsetup",
       "!createtemplate",
       "!listtemplates",
       "!deletetemplate",
@@ -212,6 +213,10 @@ export class MessageHandler {
       }
       const cleanUserId = parseDiscordId(userId);
       await this.customGameHandler.showPlayerStats(message, cleanUserId);
+      return;
+    }
+    if (message.content.startsWith("!ticketsetup")) {
+      await this.ticketRequestHandler.handleSetupFromMessage(message);
       return;
     }
 

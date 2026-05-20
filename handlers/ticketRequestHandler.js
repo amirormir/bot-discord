@@ -24,6 +24,34 @@ function hasAdminPermission(member) {
 }
 
 export class TicketRequestHandler {
+  async saveSetup({
+    guildId,
+    requestChannelId,
+    committeeChannelId,
+    committeeRoleId,
+    panelMessageId,
+    createdBy,
+    updatedBy,
+  }) {
+    await TicketPanelConfig.findOneAndUpdate(
+      { guildId },
+      {
+        guildId,
+        requestChannelId,
+        committeeChannelId,
+        committeeRoleId,
+        panelMessageId,
+        createdBy,
+        updatedBy,
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+  }
+
   buildPanelPayload() {
     const embed = new EmbedBuilder()
       .setTitle("Demandes de cost joueur")
@@ -161,23 +189,15 @@ export class TicketRequestHandler {
 
       const panelMessage = await requestChannel.send(this.buildPanelPayload());
 
-      await TicketPanelConfig.findOneAndUpdate(
-        { guildId: interaction.guildId },
-        {
-          guildId: interaction.guildId,
-          requestChannelId: requestChannel.id,
-          committeeChannelId: committeeChannel.id,
-          committeeRoleId: committeeRole.id,
-          panelMessageId: panelMessage.id,
-          createdBy: interaction.user.id,
-          updatedBy: interaction.user.id,
-        },
-        {
-          upsert: true,
-          new: true,
-          setDefaultsOnInsert: true,
-        }
-      );
+      await this.saveSetup({
+        guildId: interaction.guildId,
+        requestChannelId: requestChannel.id,
+        committeeChannelId: committeeChannel.id,
+        committeeRoleId: committeeRole.id,
+        panelMessageId: panelMessage.id,
+        createdBy: interaction.user.id,
+        updatedBy: interaction.user.id,
+      });
 
       await interaction.reply({
         content: `Configuration enregistree. Le panneau a ete poste dans <#${requestChannel.id}> et les demandes partiront vers <#${committeeChannel.id}> avec mention <@&${committeeRole.id}>.`,
@@ -201,6 +221,63 @@ export class TicketRequestHandler {
         content: `Erreur lors de la configuration: ${error.message}`,
         ephemeral: true,
       });
+    }
+  }
+
+  async handleSetupFromMessage(message) {
+    try {
+      if (!hasAdminPermission(message.member)) {
+        await message.reply(
+          "Vous devez avoir la permission Administrateur pour configurer les tickets."
+        );
+        return true;
+      }
+
+      const requestChannel = message.mentions.channels.at(0);
+      const committeeChannel = message.mentions.channels.at(1);
+      const committeeRole = message.mentions.roles.first();
+
+      if (!requestChannel || !committeeChannel || !committeeRole) {
+        await message.reply(
+          "Usage : `!ticketsetup #salon-demandes #salon-comite @comite`"
+        );
+        return true;
+      }
+
+      if (requestChannel.type !== ChannelType.GuildText) {
+        await message.reply("Le salon des demandes doit etre un salon texte classique.");
+        return true;
+      }
+
+      if (committeeChannel.type !== ChannelType.GuildText) {
+        await message.reply("Le salon comite doit etre un salon texte classique.");
+        return true;
+      }
+
+      const panelMessage = await requestChannel.send(this.buildPanelPayload());
+
+      await this.saveSetup({
+        guildId: message.guildId,
+        requestChannelId: requestChannel.id,
+        committeeChannelId: committeeChannel.id,
+        committeeRoleId: committeeRole.id,
+        panelMessageId: panelMessage.id,
+        createdBy: message.author.id,
+        updatedBy: message.author.id,
+      });
+
+      await message.reply(
+        `Configuration enregistree. Le panneau a ete poste dans <#${requestChannel.id}> et les demandes partiront vers <#${committeeChannel.id}> avec mention <@&${committeeRole.id}>.`
+      );
+
+      Logger.info(
+        `[TICKET] Setup configure via message par ${message.author.tag} sur ${message.guild?.name}`
+      );
+      return true;
+    } catch (error) {
+      Logger.error(`[TICKET] Erreur setup message: ${error.message}`);
+      await message.reply(`Erreur lors de la configuration: ${error.message}`);
+      return true;
     }
   }
 

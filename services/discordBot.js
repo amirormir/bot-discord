@@ -116,6 +116,31 @@ export class DiscordBot {
                   .setRequired(true)
                   .setAutocomplete(true)
               )
+          )
+          .addSubcommand((subcommand) =>
+            subcommand
+              .setName("setup")
+              .setDescription("Configure le panneau de demandes de cost")
+              .addChannelOption((option) =>
+                option
+                  .setName("request_channel")
+                  .setDescription("Salon ou les joueurs ouvriront le formulaire")
+                  .addChannelTypes(ChannelType.GuildText)
+                  .setRequired(true)
+              )
+              .addChannelOption((option) =>
+                option
+                  .setName("committee_channel")
+                  .setDescription("Salon ou le comite recevra les demandes")
+                  .addChannelTypes(ChannelType.GuildText)
+                  .setRequired(true)
+              )
+              .addRoleOption((option) =>
+                option
+                  .setName("committee_role")
+                  .setDescription("Role a mentionner pour chaque demande")
+                  .setRequired(true)
+              )
           ),
         new SlashCommandBuilder()
           .setName("ticket")
@@ -148,20 +173,25 @@ export class DiscordBot {
       ].map((command) => command.toJSON());
 
       const rest = new REST({ version: "10" }).setToken(CONFIG.DISCORD_TOKEN);
+      const route = CONFIG.DISCORD_GUILD_ID
+        ? Routes.applicationGuildCommands(
+            this.client.user.id,
+            CONFIG.DISCORD_GUILD_ID
+          )
+        : Routes.applicationCommands(this.client.user.id);
 
       Logger.info(
         `[DISCORD_BOT] Enregistrement de ${commands.length} commande(s) slash...`
       );
 
-      // Enregistrer les commandes globalement (peut prendre jusqu'à 1 heure pour se propager)
-      // Pour un déploiement plus rapide, utilisez Routes.guildCommands() avec un guildId spécifique
-      const data = await rest.put(
-        Routes.applicationCommands(this.client.user.id),
-        { body: commands }
-      );
+      const data = await rest.put(route, { body: commands });
 
       Logger.success(
-        `[DISCORD_BOT] ${data.length} commande(s) slash enregistrée(s) avec succès`
+        `[DISCORD_BOT] ${data.length} commande(s) slash enregistrée(s) avec succès${
+          CONFIG.DISCORD_GUILD_ID
+            ? ` sur le serveur ${CONFIG.DISCORD_GUILD_ID}`
+            : " globalement"
+        }`
       );
     } catch (error) {
       Logger.error(
@@ -197,6 +227,11 @@ export class DiscordBot {
 
           if (subcommand === "view") {
             await this.teamCommandHandler.handleView(interaction);
+            return;
+          }
+
+          if (subcommand === "setup") {
+            await this.ticketRequestHandler.handleSetup(interaction);
             return;
           }
         }
