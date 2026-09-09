@@ -93,8 +93,6 @@ ewa/
 - `!stats <@user>` : Afficher les stats détaillées d'un joueur
 
 #### Autres
-
-- `!bazouzou` : Envoyer un bazouzou aléatoire
 - `!help` : Afficher la liste des commandes
 
 ### Commandes Administrateur
