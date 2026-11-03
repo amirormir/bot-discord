@@ -6,18 +6,28 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "test:tcgarden": "node --test \"tcgarden/test/*.test.js\"",
+    "tcgarden:preview": "node tcgarden/preview.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
     "axios": "^1.11.0",
     "discord-rpc": "^4.0.1",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.0",
+    "gifenc": "^1.0.3",
     "mongodb": "^6.18.0",
     "mongoose": "^8.16.4"
+  },
+  "devDependencies": {
+    "omggif": "^1.0.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

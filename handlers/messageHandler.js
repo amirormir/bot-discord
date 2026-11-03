@@ -9,6 +9,7 @@ import { TicketRequestHandler } from "./ticketRequestHandler.js";
 import { WatchedUser } from "../models/WatchedUser.js";
 import { RandomResponseUser } from "../models/RandomResponseUser.js";
 import { EmbedBuilder } from "discord.js";
+import { TcgardenHandler } from "../tcgarden/handler.js";
 
 function parseDiscordId(input) {
   // Enlève <@, <@!, >, espaces, etc. pour ne garder que l'ID pur
@@ -81,6 +82,7 @@ export class MessageHandler {
     this.reactionRoleHandler = new ReactionRoleHandler();
     this.customGameHandler = new CustomGameHandler();
     this.ticketRequestHandler = new TicketRequestHandler();
+    this.tcgardenHandler = new TcgardenHandler();
   }
 
   async handleMessage(message) {
@@ -89,6 +91,11 @@ export class MessageHandler {
     );
 
     if (message.author.bot) {
+      return;
+    }
+
+    // Commandes TCGarden (!vitrine, !best, !profil, !booster, !carte, !tcg) : GIF animés.
+    if (await this.tcgardenHandler.handleMessage(message)) {
       return;
     }
 
@@ -381,6 +388,7 @@ export class MessageHandler {
               name: "🎯 Divers",
               value: [
                 "`!bazouzou` - Envoyer un bazouzou aléatoire",
+                "`!tcg` - Les commandes TCGarden (`!vitrine`, `!best`, `!profil`, `!booster`, `!carte`)",
                 "`!loli` - Afficher cette aide complète",
               ].join("\n"),
               inline: false,
@@ -388,7 +396,7 @@ export class MessageHandler {
             {
               name: "🔐 Permissions",
               value: [
-                "`Public` : `!elo`, `!stats`, `!bazouzou`, `!loli`, `/team view`",
+                "`Public` : `!elo`, `!stats`, `!bazouzou`, `!loli`, `/team view`, commandes TCGarden",
                 "`Admin ou Arbitre` : toutes les commandes `!custom`, `!classement`, `!admin elo ...`, `!admin pauseglobal`",
                 "`Admin uniquement` : `!resetclassement`, `!admin eloreset`, `!admin elo reset`, `!admin eloreset confirm`, commandes templates/messages, `!rr ...`, watchlist, `/team create`, `/team add-player`",
               ].join("\n"),

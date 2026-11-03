@@ -373,6 +373,9 @@ export class DiscordBot {
       // Détruire le Rich Presence
       await this.richPresence.destroy();
 
+      // Arrêter le fil de rendu des GIF TCGarden
+      await this.messageHandler.tcgardenHandler.stop();
+
       // Déconnecter le client Discord
       await this.client.destroy();
       Logger.success("Bot Discord arrêté avec succès");

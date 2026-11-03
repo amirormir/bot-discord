@@ -127,7 +127,13 @@ Créez un fichier `.env` à la racine du projet :
 ```
 DISCORD_TOKEN=votre_token_discord
 MONGO_URL=votre_url_mongodb
+# TCGarden (tcgarden/README.md) : le même secret que BOT_API_SECRET sur le site
+TCGARDEN_BOT_SECRET=
 ```
+
+### TCGarden
+
+Les commandes `!vitrine`, `!best`, `!profil`, `!booster`, `!carte` et `!tcg` publient des GIF animés du jeu de cartes TCGarden : voir [tcgarden/README.md](tcgarden/README.md).
 
 ### Configuration MongoDB
 

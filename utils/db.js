@@ -3,10 +3,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// L'URL contient le mot de passe de la base : elle ne s'affiche jamais dans les journaux.
 const MONGO_URL = process.env.MONGO_URL;
-
-console.log("[DEBUG] Chemin courant:", process.cwd());
-console.log("[DEBUG] MONGO_URL:", MONGO_URL);
 
 export async function connectDB() {
   try {

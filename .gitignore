@@ -41,3 +41,6 @@ build/
 *.bak
 *.backup
 .local-backups/
+
+# Banc d'essai local des GIF TCGarden
+.lab/
